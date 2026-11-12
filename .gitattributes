@@ -4,5 +4,7 @@
 *.yml text eol=lf
 Dockerfile text eol=lf
 .env*.example text eol=lf
+# Keep license snapshot bytes stable for checksum verification on every platform.
+ssg/licenses/**/*.txt text eol=lf
 *.nes binary
 *.zip binary
