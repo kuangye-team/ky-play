@@ -322,7 +322,11 @@ impl Storage {
                     if !referenced.insert(id.clone()) || self.referenced(&id)? {
                         return Err("File already committed".into());
                     }
-                    let file = File::open(self.path(&id)?).map_err(error)?;
+                    // Windows FlushFileBuffers requires a handle with write access.
+                    let file = OpenOptions::new()
+                        .write(true)
+                        .open(self.path(&id)?)
+                        .map_err(error)?;
                     if file.metadata().map_err(error)?.len() != size {
                         return Err("Incomplete file".into());
                     }
