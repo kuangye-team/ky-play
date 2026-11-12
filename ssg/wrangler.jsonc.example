@@ -1,0 +1,13 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "ky-play-ssg",
+  "compatibility_date": "2026-10-28",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application"
+  },
+  "vars": {},
+  "build": {
+    "command": "npm run build:deploy"
+  }
+}

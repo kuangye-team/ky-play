@@ -1,0 +1,128 @@
+/* Shared color roles keep the library, overlays and settings in the same theme.
+   The original violet colors remain as fallbacks in the base styles. */
+:root {
+  --ui-canvas: var(--theme-canvas, #f3f6fc);
+  --ui-surface: var(--theme-surface, #fff);
+  --ui-soft: var(--theme-soft, #f1edfc);
+  --ui-text: var(--theme-text, #36334d);
+  --ui-secondary: var(--theme-secondary, #7b728e);
+  --ui-muted: var(--theme-muted, #91879f);
+  --ui-line: var(--theme-line, #ede8f4);
+  --ui-accent: var(--theme-accent, #7956de);
+  --ui-on-accent: #fff;
+  background: var(--ui-canvas);
+}
+:root[data-theme="ocean"] {
+  --theme-canvas: #edf5fa;
+  --theme-surface: #fff;
+  --theme-surface-alt: #f6fafc;
+  --theme-soft: #e6f2f7;
+  --theme-soft-strong: #cfe5ef;
+  --theme-text: #233e50;
+  --theme-secondary: #526f80;
+  --theme-muted: #698697;
+  --theme-accent: #267eaa;
+  --theme-accent-end: #459abf;
+  --theme-line: #dfebf1;
+  --theme-line-strong: #b5d4e2;
+  --theme-shadow: #275b7914;
+}
+:root[data-theme="matcha"] {
+  --theme-canvas: #f0f4ec;
+  --theme-surface: #fdfefb;
+  --theme-surface-alt: #f7f9f3;
+  --theme-soft: #eaf1e2;
+  --theme-soft-strong: #d7e5cb;
+  --theme-text: #34452e;
+  --theme-secondary: #617154;
+  --theme-muted: #78866d;
+  --theme-accent: #567c43;
+  --theme-accent-end: #7b9b55;
+  --theme-line: #e2e9da;
+  --theme-line-strong: #c2d1b6;
+  --theme-shadow: #4c66331a;
+}
+:root[data-theme="midnight"] {
+  --theme-canvas: #141622;
+  --theme-surface: #202332;
+  --theme-surface-alt: #242737;
+  --theme-soft: #2d2d44;
+  --theme-soft-strong: #41405c;
+  --theme-text: #eceaf6;
+  --theme-secondary: #c3bed6;
+  --theme-muted: #a49eb9;
+  --theme-accent: #b1a0ff;
+  --theme-accent-end: #8977d9;
+  --theme-line: #343648;
+  --theme-line-strong: #54506e;
+  --theme-shadow: #00000030;
+  --ui-on-accent: #191523;
+}
+:root[data-theme="midnight"]
+  :is(.button:not(.secondary):not(.danger), .nav-item.active, .brand-icon) {
+  color: var(--ui-on-accent);
+}
+:root[data-theme="midnight"] :is(.error-text, .danger-text) {
+  color: #f2a6b6;
+}
+:root[data-theme="midnight"] .sidebar {
+  background: var(--ui-canvas);
+}
+:root[data-theme="ocean"] .banner-art img {
+  filter: hue-rotate(-52deg);
+}
+:root[data-theme="matcha"] .banner-art img {
+  filter: hue-rotate(-175deg) saturate(0.65);
+}
+:root[data-theme="midnight"] .banner-art img {
+  filter: brightness(0.88) saturate(0.8);
+}
+/* Keep the game picture and imported artwork in their original colors. */
+html[lang="en"] .brand strong {
+  letter-spacing: -0.7px;
+  font-size: 21px;
+}
+html[lang="en"] .nav-item {
+  gap: 10px;
+}
+html[lang="en"] .nav-item span:not(.nav-count) {
+  font-size: 12px;
+}
+html[lang="en"] .banner-copy h2 {
+  letter-spacing: -0.6px;
+}
+html[lang="en"] .controls-bottom {
+  flex-wrap: wrap;
+}
+html[lang="en"] .player-toolbar .player-action {
+  width: auto;
+  min-width: 104px;
+}
+@media (max-width: 640px) {
+  html[lang="en"] .brand strong {
+    font-size: 16px;
+  }
+  html[lang="en"] .brand-copy > span {
+    font-size: 7px;
+    letter-spacing: 0;
+  }
+  html[lang="en"] .banner-copy {
+    max-width: 100%;
+  }
+  html[lang="en"] .heading-row {
+    flex-wrap: wrap;
+  }
+  html[lang="en"] .player-toolbar .player-action {
+    min-width: 80px;
+    font-size: 9px;
+  }
+}
+
+@media (max-width: 640px) {
+  html[lang="en"] .banner-copy p {
+    max-width: 160px;
+  }
+  html[lang="en"] .banner-copy .title-spark {
+    display: none;
+  }
+}

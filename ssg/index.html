@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="matcha">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f0f4ec" />
+    <meta
+      name="description"
+      content="拾光，桂花载酒，与少年游。添加游戏，即刻开始。熟悉的像素，简单的快乐。"
+    />
+    <link rel="icon" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/icons/apple-touch-icon.png" />
+    <meta name="application-name" content="拾光 · Oasis" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="拾光 · Oasis" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <title>拾光 · 桂花载酒，与少年游</title>
+    <style>
+      /* __BOOT_THEMES__ */
+      html {
+        background: var(--theme-canvas, #f3f6fc);
+      }
+      body {
+        margin: 0;
+      }
+      #boot-loading {
+        --boot-accent: var(--theme-accent, #7956de);
+        --boot-surface: var(--theme-surface, #fff);
+        --boot-muted: var(--theme-secondary, #7b728e);
+        --boot-line: var(--theme-line, #ede8f4);
+        position: fixed;
+        inset: 0;
+        z-index: 10000;
+        display: grid;
+        place-items: center;
+        box-sizing: border-box;
+        overflow: auto;
+        padding: 28px 24px;
+        background:
+          radial-gradient(ellipse at 15% 12%, color-mix(in srgb, var(--boot-accent) 14%, transparent), transparent 58%),
+          radial-gradient(ellipse at 90% 90%, var(--theme-soft, #f1edfc), transparent 60%),
+          var(--theme-canvas, #f3f6fc);
+        color: var(--theme-text, #36334d);
+        font: 14px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+        text-align: center;
+        isolation: isolate;
+      }
+      #boot-loading::before {
+        content: "";
+        position: absolute;
+        inset: 0;
+        z-index: -1;
+        pointer-events: none;
+        background-image: radial-gradient(color-mix(in srgb, var(--boot-accent) 15%, transparent) 0.8px, transparent 0.8px);
+        background-size: 26px 26px;
+        mask-image: radial-gradient(ellipse at center, transparent 10%, #000 80%);
+      }
+      #boot-loading .boot-content {
+        display: grid;
+        justify-items: center;
+        box-sizing: border-box;
+        width: min(380px, 100%);
+        padding: 42px 16px 32px;
+      }
+      #boot-loading .boot-symbol {
+        position: relative;
+        display: grid;
+        place-items: center;
+        box-sizing: border-box;
+        width: 90px;
+        height: 90px;
+        margin-bottom: 22px;
+        border: 1px solid var(--boot-line);
+        border-radius: 50%;
+        background: var(--boot-surface);
+        box-shadow: 0 0 36px color-mix(in srgb, var(--boot-accent) 6%, transparent);
+      }
+      #boot-loading .boot-orbit {
+        position: absolute;
+        inset: 7px;
+        box-sizing: border-box;
+        border: 2px solid var(--boot-line);
+        border-top-color: var(--boot-accent);
+        border-radius: 50%;
+        animation: boot-spin 1.2s linear infinite;
+      }
+      #boot-loading .boot-symbol svg {
+        width: 40px;
+        height: 40px;
+        color: var(--boot-accent);
+      }
+      #boot-loading h1 {
+        margin: 0;
+        font-size: 26px;
+        font-weight: 650;
+        letter-spacing: 3px;
+      }
+      html[lang="en"] #boot-loading h1 {
+        letter-spacing: -0.7px;
+      }
+      #boot-loading p {
+        margin: 0;
+      }
+      #boot-loading #boot-tagline {
+        margin-top: 6px;
+        color: var(--boot-muted);
+        font-size: 10px;
+        letter-spacing: 2.5px;
+      }
+      #boot-loading #boot-message {
+        max-width: 310px;
+        margin-top: 28px;
+        color: var(--boot-muted);
+        font-size: 12px;
+        overflow-wrap: anywhere;
+      }
+      #boot-loading [hidden] {
+        display: none;
+      }
+      #boot-reload {
+        margin-top: 18px;
+        border: 1px solid var(--boot-line);
+        border-radius: 10px;
+        padding: 10px 20px;
+        background: var(--boot-surface);
+        color: var(--boot-accent);
+        font: inherit;
+        cursor: pointer;
+      }
+      #boot-reload:focus-visible {
+        outline: 2px solid var(--boot-accent);
+        outline-offset: 4px;
+      }
+      @keyframes boot-spin {
+        to { transform: rotate(360deg); }
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #boot-loading .boot-orbit { animation: none; }
+      }
+    </style>
+    <script>
+      // Match preferences.ts before the app and its styles have downloaded.
+      (() => {
+        let preferences;
+        try {
+          preferences = JSON.parse(localStorage.getItem("shiguang.preferences") || "null");
+        } catch {}
+        const root = document.documentElement;
+        const theme = preferences?.theme;
+        root.dataset.theme = ["matcha", "ocean", "violet", "midnight"].includes(theme) ? theme : "matcha";
+        root.style.colorScheme = root.dataset.theme === "midnight" ? "dark" : "light";
+        const language = ["zh", "en"].includes(preferences?.language)
+          ? preferences.language
+          : navigator.languages?.[0] || navigator.language;
+        root.lang = /^zh(?:-|$)/i.test(language) ? "zh-CN" : "en";
+        document.querySelector('meta[name="theme-color"]').content =
+          getComputedStyle(root).getPropertyValue("--theme-canvas").trim() || "#f3f6fc";
+      })();
+    </script>
+    <noscript><style>#boot-loading { display: none; }</style></noscript>
+  </head>
+  <body>
+    <div id="root" aria-busy="true" inert></div>
+    <div id="boot-loading" role="status" aria-live="polite">
+      <div class="boot-content">
+        <div class="boot-symbol" aria-hidden="true">
+          <span class="boot-orbit"></span>
+          <!-- __BOOT_ICON__ -->
+        </div>
+        <h1 id="boot-brand">拾光</h1>
+        <p id="boot-tagline">SEIZE THE DAY</p>
+        <p id="boot-message">正在打开拾光…</p>
+        <button id="boot-reload" type="button" hidden>重新加载</button>
+      </div>
+    </div>
+    <noscript>请启用 JavaScript 以打开拾光。Please enable JavaScript to open Oasis.</noscript>
+    <script>
+      (() => {
+        const copy = document.documentElement.lang === "zh-CN" ? {
+          brand: "拾光",
+          title: "拾光 · 桂花载酒，与少年游",
+          message: "正在打开拾光…",
+          reload: "重新加载",
+          failed: "页面暂时没有打开，请检查网络后重试。",
+          storageFailed: "暂时无法打开游戏库，请确认浏览器允许保存网站数据后重试。",
+        } : {
+          brand: "Oasis",
+          title: "Oasis · Osmanthus wine, and days with old friends",
+          message: "Opening Oasis…",
+          reload: "Reload",
+          failed: "The page could not load. Check your connection and try again.",
+          storageFailed: "Unable to open your library. Allow this browser to save site data, then try again.",
+        };
+        document.title = copy.title;
+        document.getElementById("boot-brand").textContent = copy.brand;
+        const message = document.getElementById("boot-message");
+        message.textContent = copy.message;
+        const reload = document.getElementById("boot-reload");
+        reload.textContent = copy.reload;
+        reload.addEventListener("click", () => location.reload());
+        const loading = document.getElementById("boot-loading");
+        const root = document.getElementById("root");
+        const styles = Array.from(document.querySelectorAll("link[data-app-style]"));
+        let ready = false;
+        let failed = false;
+        const cleanup = () => {
+          document.removeEventListener("shiguang:ready", onReady);
+          document.removeEventListener("shiguang:failed", onStorageFailure);
+          window.removeEventListener("error", onError, true);
+          window.removeEventListener("unhandledrejection", onRejection);
+          styles.forEach((link) => link.removeEventListener("load", onStyleLoad));
+        };
+        const finish = () => {
+          if (!ready || failed || styles.some((link) => !link.sheet)) return;
+          styles.forEach((link) => { link.media = "all"; });
+          loading.remove();
+          root.removeAttribute("aria-busy");
+          root.removeAttribute("inert");
+          cleanup();
+        };
+        const fail = (text) => {
+          failed = true;
+          loading.querySelector(".boot-orbit").hidden = true;
+          message.textContent = text;
+          reload.hidden = false;
+        };
+        const onReady = () => { ready = true; finish(); };
+        const onStorageFailure = () => fail(copy.storageFailed);
+        const onStyleLoad = (event) => {
+          event.target.media = "all";
+          requestAnimationFrame(finish);
+        };
+        const onError = (event) => {
+          if (event instanceof ErrorEvent || styles.includes(event.target) ||
+              (event.target instanceof HTMLScriptElement && event.target.type === "module")) {
+            fail(copy.failed);
+          }
+        };
+        const onRejection = () => fail(copy.failed);
+        document.addEventListener("shiguang:ready", onReady);
+        document.addEventListener("shiguang:failed", onStorageFailure);
+        styles.forEach((link) => link.addEventListener("load", onStyleLoad));
+        window.addEventListener("error", onError, true);
+        window.addEventListener("unhandledrejection", onRejection);
+        if (styles.some((link) => link.dataset.failed)) fail(copy.failed);
+      })();
+    </script>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

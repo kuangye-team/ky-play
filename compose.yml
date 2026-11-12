@@ -1,0 +1,17 @@
+name: ky
+
+services:
+  play:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NPM_REGISTRY: ${NPM_REGISTRY:-https://registry.npmjs.org/}
+        EMULATORJS_ARCHIVE_URL: ${EMULATORJS_ARCHIVE_URL:-https://github.com/EmulatorJS/EmulatorJS/releases/download/v4.2.3/4.2.3.7z}
+        VITE_WEB_URL: ${VITE_WEB_URL-}
+        VITE_CLIENT_DOWNLOAD_URL: ${VITE_CLIENT_DOWNLOAD_URL-}
+        VITE_API_LATEST: ${VITE_API_LATEST:-https://github.com/kuangye-team/ky-play/releases/latest/download/latest.json}
+        VITE_EMULATOR_CDN_URL: ${VITE_EMULATOR_CDN_URL-}
+    ports:
+      - "${SERVER_PORT:-8080}:8080"
+    restart: unless-stopped

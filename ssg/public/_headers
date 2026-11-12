@@ -1,0 +1,11 @@
+/*
+  Cross-Origin-Opener-Policy: same-origin
+  Cross-Origin-Embedder-Policy: require-corp
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: same-origin
+/sw.js
+  Cache-Control: no-cache
+/licenses/*
+  Cache-Control: no-cache
+/licenses/*.txt
+  Content-Type: text/plain; charset=utf-8

@@ -1,0 +1,235 @@
+name: Release desktop app
+
+on:
+  push:
+    tags: ['v[0-9]+.[0-9]+.[0-9]+']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag (for example v1.0.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: desktop-release-${{ inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  RELEASE_VERSION: ${{ inputs.tag || github.ref_name }}
+  SIGNPATH_ENABLED: ${{ vars.SIGNPATH_ENABLED || 'false' }}
+  TAURI_UPDATER_URL: ${{ vars.TAURI_UPDATER_URL || format('https://github.com/{0}/releases/latest/download/latest.json', github.repository) }}
+  TAURI_UPDATER_PUBLIC_KEY: ${{ secrets.TAURI_UPDATER_PUBLIC_KEY || vars.TAURI_UPDATER_PUBLIC_KEY }}
+  TAURI_RELEASE_BASE_URL: ${{ vars.TAURI_RELEASE_BASE_URL }}
+  EMULATORJS_ARCHIVE_URL: ${{ vars.EMULATORJS_ARCHIVE_URL }}
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ssg/package-lock.json
+      - name: Validate release configuration
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          node --input-type=module -e "import { releaseVersion, updaterConfig } from './scripts/desktop-config.mjs'; releaseVersion(process.env.RELEASE_VERSION); updaterConfig(process.env, true)"
+      - name: Validate optional SignPath configuration
+        env:
+          SIGNPATH_API_TOKEN: ${{ secrets.SIGNPATH_API_TOKEN }}
+          SIGNPATH_ORGANIZATION_ID: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          SIGNPATH_PROJECT_SLUG: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          SIGNPATH_SIGNING_POLICY_SLUG: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+        run: node --input-type=module -e "import { signPathEnabled } from './scripts/desktop-config.mjs'; signPathEnabled(process.env)"
+      - run: npm ci --ignore-scripts --prefer-offline
+      - run: npm --prefix ssg ci --prefer-offline
+      - run: npm run test:desktop
+      - run: npm run test:prepare
+      - run: npm run test:rust-cache
+      - run: npm --prefix ssg test
+
+  build:
+    needs: validate
+    permissions:
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-15-intel
+            target: universal-apple-darwin
+            rust-targets: aarch64-apple-darwin,x86_64-apple-darwin
+          - os: windows-2025
+            target: x86_64-pc-windows-msvc
+            rust-targets: x86_64-pc-windows-msvc
+    # Share the macOS runner switch with CI; hosted DMGs build on Intel.
+    runs-on: ${{ startsWith(matrix.os, 'macos-') && vars.MACOS_SELF_HOSTED == 'true' && fromJSON('["self-hosted", "macOS"]') || matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            ssg/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust-targets }}
+      - name: Restore desktop test cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app -> ../temp/cache/cargo
+          shared-key: desktop-check
+          save-if: false
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app -> ../temp/cache/cargo
+          key: ${{ matrix.target }}
+          cache-on-failure: true
+      - name: Cache verified EmulatorJS archive
+        uses: actions/cache@v5
+        with:
+          path: temp/cache/emulatorjs/*.7z
+          key: emulatorjs-${{ hashFiles('ssg/licenses/emulatorjs.json') }}
+          enableCrossOsArchive: true
+      - run: npm ci --ignore-scripts --prefer-offline
+      - run: npm --prefix ssg ci --prefer-offline
+      - run: node scripts/prepare-emulatorjs.mjs
+      - run: cargo test --manifest-path app/Cargo.toml --locked
+      - name: Import Apple signing certificate when configured
+        if: runner.os == 'macOS'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          if [ -n "$APPLE_CERTIFICATE" ]; then
+            certificate="$RUNNER_TEMP/signing.p12"
+            keychain="$RUNNER_TEMP/signing.keychain-db"
+            security list-keychains -d user > "$RUNNER_TEMP/ky-play-keychains.txt"
+            keychain_password="$(openssl rand -hex 24)"
+            printf '%s' "$APPLE_CERTIFICATE" | base64 --decode > "$certificate"
+            security create-keychain -p "$keychain_password" "$keychain"
+            security set-keychain-settings -lut 21600 "$keychain"
+            security unlock-keychain -p "$keychain_password" "$keychain"
+            security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+            security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain" >/dev/null
+            security list-keychains -d user -s "$keychain" login.keychain-db
+            rm "$certificate"
+          fi
+      - name: Build signed updater artifacts and installers
+        run: npm run desktop:build -- --target ${{ matrix.target }} --ci -- --locked
+        env:
+          CI: true
+          VITE_WEB_URL: ${{ secrets.VITE_WEB_URL || vars.VITE_WEB_URL }}
+          VITE_CLIENT_DOWNLOAD_URL: ${{ secrets.VITE_CLIENT_DOWNLOAD_URL || vars.VITE_CLIENT_DOWNLOAD_URL }}
+          VITE_API_LATEST: ${{ secrets.VITE_API_LATEST || vars.VITE_API_LATEST || 'https://github.com/kuangye-team/ky-play/releases/latest/download/latest.json' }}
+          VITE_EMULATOR_CDN_URL: ${{ secrets.VITE_EMULATOR_CDN_URL || vars.VITE_EMULATOR_CDN_URL }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY || '-' }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Upload Windows installer for SignPath
+        if: runner.os == 'Windows' && env.SIGNPATH_ENABLED == 'true'
+        id: signpath-unsigned
+        uses: actions/upload-artifact@v7
+        with:
+          name: signpath-unsigned-windows
+          path: app/dist/*-x64-setup.exe
+          if-no-files-found: error
+          retention-days: 1
+      - name: Sign Windows installer with SignPath
+        if: runner.os == 'Windows' && env.SIGNPATH_ENABLED == 'true'
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_SIGNING_POLICY_SLUG }}
+          artifact-configuration-slug: ${{ vars.SIGNPATH_ARTIFACT_CONFIGURATION_SLUG }}
+          github-artifact-id: ${{ steps.signpath-unsigned.outputs.artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: temp/artifacts/signpath-signed
+      - name: Verify Windows signature and regenerate updater signature
+        if: runner.os == 'Windows' && env.SIGNPATH_ENABLED == 'true'
+        shell: pwsh
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: |
+          $version = $env:RELEASE_VERSION -replace '^v', ''
+          $installer = "temp/artifacts/signpath-signed/ky-play-$version-x64-setup.exe"
+          $signature = Get-AuthenticodeSignature -LiteralPath $installer
+          if ($signature.Status -ne 'Valid') {
+            throw "SignPath installer signature is not valid: $($signature.Status)"
+          }
+          node scripts/finalize-windows-signing.mjs temp/artifacts/signpath-signed
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-${{ matrix.target }}
+          path: |
+            app/dist/*
+            !app/dist/latest.json
+          if-no-files-found: error
+          retention-days: 14
+      - name: Restore Apple keychains and remove signing credentials
+        if: always() && runner.os == 'macOS'
+        shell: bash
+        run: |
+          if [ -f "$RUNNER_TEMP/ky-play-keychains.txt" ]; then
+            python3 -c 'import pathlib, shlex, subprocess, sys; subprocess.run(["security", "list-keychains", "-d", "user", "-s", *shlex.split(pathlib.Path(sys.argv[1]).read_text())], check=True)' "$RUNNER_TEMP/ky-play-keychains.txt"
+            if [ -f "$RUNNER_TEMP/signing.keychain-db" ]; then
+              security delete-keychain "$RUNNER_TEMP/signing.keychain-db"
+            fi
+            rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/ky-play-keychains.txt"
+          fi
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: desktop-*
+          path: app/dist
+          merge-multiple: true
+      - name: Generate complete update manifest
+        run: npm run desktop:manifest
+      - uses: actions/upload-artifact@v7
+        with:
+          name: desktop-release
+          path: app/dist/
+          if-no-files-found: error
+      - name: Publish release after all assets are uploaded
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/publish-desktop-release.mjs

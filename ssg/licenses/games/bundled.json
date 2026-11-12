@@ -1,0 +1,36 @@
+[
+  {
+    "id": "thwaite-nes",
+    "name": "小镇反弹道导弹",
+    "englishName": "Thwaite",
+    "version": "v0.04",
+    "author": "Damian Yerrick",
+    "size": 24592,
+    "sha256": "a2df24d9c9f72e56c2fdc4c703becc47a5700ad0158da8208247635ebeb3779c",
+    "romUrl": "/game/thwaite.nes",
+    "cover": "/game/thwaite.png",
+    "projectUrl": "https://github.com/pinobatch/thwaite-nes",
+    "sourceUrl": "https://github.com/pinobatch/thwaite-nes/archive/refs/tags/v0.04.zip",
+    "downloadUrl": "https://github.com/pinobatch/thwaite-nes/releases/download/v0.04/thwaite.nes",
+    "license": "GPL-3.0",
+    "licenseSourceUrl": "https://github.com/pinobatch/thwaite-nes/blob/v0.04/LICENSE.txt",
+    "note": "由 Damian Yerrick 创作，本站提供未经修改的原版游戏，保留作者与贡献者署名。"
+  },
+  {
+    "id": "nes-runner",
+    "name": "无限奔跑",
+    "englishName": "nes-runner",
+    "version": "v1",
+    "author": "zorchenhimer",
+    "size": 81936,
+    "sha256": "1a67bfabdde2d96eacb04eb7f9d17e8da6c082d4976c318315fe31e2d19b4384",
+    "romUrl": "/game/runner.nes",
+    "cover": "/game/runner.png",
+    "projectUrl": "https://github.com/zorchenhimer/nes-runner",
+    "sourceUrl": "https://github.com/zorchenhimer/nes-runner/archive/refs/tags/v1.zip",
+    "downloadUrl": "https://github.com/zorchenhimer/nes-runner/releases/download/v1/runner.nes",
+    "license": "MIT",
+    "licenseSourceUrl": "https://github.com/zorchenhimer/nes-runner/blob/e2d70cfcc64b947a26e7c05d3db55c240686169b/LICENSE.md",
+    "note": "由 zorchenhimer 创作，本站提供未经修改的原版游戏，保留作者与贡献者署名。"
+  }
+]

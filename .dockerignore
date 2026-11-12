@@ -1,0 +1,45 @@
+# Dependencies, build output, and caches
+**/node_modules
+**/dist
+/ssg/desktop-dist
+/app/target
+/app/gen
+**/*.tsbuildinfo
+**/test-results
+**/playwright-report
+**/coverage
+**/.cache
+**/.vite
+**/.wrangler
+**/__pycache__
+**/*.log
+
+# Repository, local assets, and development files
+.git
+.github
+.gitignore
+**/AGENTS.md
+**/.idea
+**/.vscode
+**/.DS_Store
+**/Thumbs.db
+/ssg/public/emulator
+/ssg/public/emulatorjs
+/game
+/screenshot
+/shot
+/artifacts
+/temp
+/ssg/tests
+/ssg/src/**/*.test.ts
+/README*.md
+/compose.yml
+
+# Local configuration; only examples may enter the build context
+**/.env
+**/.env.*
+!**/.env.example
+!**/.env.json.example
+**/wrangler.jsonc
+
+# Keep ssg/build/ and generated ssg/public/licenses/ for builds.

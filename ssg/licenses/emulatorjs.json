@@ -1,0 +1,10 @@
+{
+  "version": "4.2.3",
+  "projectUrl": "https://github.com/EmulatorJS/EmulatorJS",
+  "releaseUrl": "https://github.com/EmulatorJS/EmulatorJS/releases/tag/v4.2.3",
+  "cdnUrl": "https://cdn.emulatorjs.org/4.2.3",
+  "archiveUrl": "https://github.com/EmulatorJS/EmulatorJS/releases/download/v4.2.3/4.2.3.7z",
+  "archiveSha256": "07d451bc06fa3ad04ab30d9b94eb63ac34ad0babee52d60357b002bde8f3850b",
+  "license": "GPL-3.0",
+  "licenseSha256": "a617fab6d251b3302b1cb2c1c94f52d1c584f6fcb2fc218ec1a475bc08053a61"
+}

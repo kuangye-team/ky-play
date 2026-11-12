@@ -1,0 +1,34 @@
+# OS metadata and local agent instructions
+.DS_Store
+Thumbs.db
+AGENTS.md
+
+# Dependencies and build output
+node_modules/
+/ssg/dist/
+/ssg/desktop-dist/
+/app/dist/
+/app/target/
+/app/gen/
+*.tsbuildinfo
+/ssg/public/emulator/
+/ssg/public/emulatorjs/
+/ssg/public/licenses/
+
+# Private games, screenshots, and temporary files
+/temp/
+
+# Test reports, logs, and caches
+playwright-report/
+test-results/
+coverage/
+*.log
+__pycache__/
+
+# Local configuration; keep example files in version control
+.env
+.env.*
+!.env.example
+!.env.json.example
+wrangler.jsonc
+.wrangler/

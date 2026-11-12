@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>游戏画面</title>
+    <style>
+      html,
+      body,
+      #game {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: #17182b;
+      }
+      body {
+        font-family: system-ui;
+      }
+      .ejs_menu_bar {
+        display: none !important;
+      }
+      .ejs_loading_text {
+        font-family: system-ui !important;
+      }
+      .ejs_parent {
+        background: #17182b !important;
+      }
+      canvas {
+        image-rendering: pixelated;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="game"></div>
+    <script src="/player-performance.js"></script>
+    <script src="/player-emulator.js"></script>
+    <script src="/player.js"></script>
+  </body>
+</html>
