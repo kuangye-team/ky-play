@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, verify } from "node:crypto";
 import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { basename, resolve } from "node:path";
 import { collectArtifacts, writeManifest } from "./desktop-release.mjs";
 import { desktopBundleResources, releaseVersion, root, signPathEnabled, updaterConfig } from "./desktop-config.mjs";
 import { finalizeWindowsSigning } from "./finalize-windows-signing.mjs";
+import { publishDesktopRelease } from "./publish-desktop-release.mjs";
 
 const signature = Buffer.from("untrusted comment: test signature\nfixture").toString("base64");
 function fixture(t) {
@@ -15,6 +16,106 @@ function fixture(t) {
   t.after(() => rmSync(directory, { recursive: true, force: true }));
   return directory;
 }
+
+function publishFixture(t) {
+  const directory = fixture(t);
+  const files = {
+    "ky-play-1.2.3-universal.dmg": "mac installer",
+    "ky-play-1.2.3-universal.app.tar.gz": "mac update",
+    "ky-play-1.2.3-universal.app.tar.gz.sig": signature,
+    "ky-play-1.2.3-x64-setup.exe": "windows installer",
+    "ky-play-1.2.3-x64-setup.exe.sig": signature,
+  };
+  for (const [name, contents] of Object.entries(files)) writeFileSync(resolve(directory, name), contents);
+  writeManifest(directory, "1.2.3", {});
+  files["latest.json"] = readFileSync(resolve(directory, "latest.json"), "utf8");
+  return { directory, files };
+}
+
+for (const state of ["missing", "draft", "published", "published-retry"]) {
+  test(`publish completes a ${state} release and uploads the manifest after its packages`, (t) => {
+    const { directory, files } = publishFixture(t);
+    let release = state === "missing" ? null : { isDraft: state === "draft" };
+    // Existing mutable releases may contain assets from an interrupted attempt.
+    const remote = state === "draft" || state === "published-retry"
+      ? { "ky-play-1.2.3-x64-setup.exe": "previous upload" } : {};
+    let edits = 0;
+    const runGh = (command, action, tag, ...args) => {
+      assert.equal(command, "release");
+      assert.equal(tag, "v1.2.3");
+      if (action === "view") {
+        if (!release) throw Object.assign(new Error("not found"), { stderr: Buffer.from("release not found") });
+        return JSON.stringify(release);
+      }
+      if (action === "create") {
+        assert.equal(release, null);
+        assert.ok(args.includes("--verify-tag"));
+        assert.ok(args.includes("--draft"));
+        release = { isDraft: true };
+      } else if (action === "upload") {
+        assert.ok(release);
+        for (const path of args.filter((arg) => arg !== "--clobber")) {
+          const name = basename(path);
+          if (name in remote) assert.ok(args.includes("--clobber"));
+          if (name === "latest.json") {
+            assert.equal(args.filter((arg) => arg !== "--clobber").length, 1);
+            assert.deepEqual(remote, Object.fromEntries(Object.entries(files).filter(([key]) => key !== "latest.json")));
+          }
+          remote[name] = readFileSync(path, "utf8");
+        }
+      } else if (action === "edit") {
+        assert.deepEqual(remote, files);
+        assert.equal(release.isDraft, true);
+        assert.deepEqual(args, ["--draft=false"]);
+        release.isDraft = false;
+        edits++;
+      } else assert.fail(`Unexpected gh action: ${action}`);
+    };
+    assert.equal(publishDesktopRelease(directory, "v1.2.3", runGh), "v1.2.3");
+    assert.deepEqual(remote, files);
+    assert.equal(release.isDraft, false);
+    assert.equal(edits, state.startsWith("published") ? 0 : 1);
+  });
+}
+
+for (const failedAsset of ["ky-play-1.2.3-x64-setup.exe", "latest.json"]) {
+  test(`a failed ${failedAsset} upload stops publication`, (t) => {
+    const { directory } = publishFixture(t);
+    const uploads = [];
+    const failure = new Error("upload failed");
+    const runGh = (command, action, tag, ...args) => {
+      if (action === "view") return JSON.stringify({ isDraft: true });
+      assert.equal(action, "upload", "must not publish a draft after an upload failure");
+      const names = args.filter((arg) => arg !== "--clobber").map((path) => basename(path));
+      uploads.push(...names);
+      if (names.includes(failedAsset)) throw failure;
+    };
+    assert.throws(() => publishDesktopRelease(directory, "1.2.3", runGh), (error) => error === failure);
+    if (failedAsset !== "latest.json") assert.equal(uploads.includes("latest.json"), false);
+  });
+}
+
+test("release lookup errors do not create or overwrite a release", (t) => {
+  const { directory } = publishFixture(t);
+  for (const stderr of ["HTTP 403: Resource not accessible", "connection refused"]) {
+    const failure = Object.assign(new Error("lookup failed"), { stderr: Buffer.from(stderr) });
+    const runGh = (command, action) => {
+      assert.equal(action, "view");
+      throw failure;
+    };
+    assert.throws(() => publishDesktopRelease(directory, "1.2.3", runGh), (error) => error === failure);
+  }
+});
+
+test("missing manifests or empty artifacts fail before changing a release", (t) => {
+  const { directory } = publishFixture(t);
+  const runGh = () => assert.fail("must validate local files first");
+  writeFileSync(resolve(directory, "ky-play-1.2.3-x64-setup.exe"), "");
+  assert.throws(() => publishDesktopRelease(directory, "1.2.3", runGh), /Missing or empty release artifact/);
+  rmSync(resolve(directory, "latest.json"));
+  assert.throws(() => publishDesktopRelease(directory, "1.2.3", runGh), /latest.json are required/);
+});
+
 test("desktop bundles one shared emulator directory unless a CDN is selected", () => {
   const resources = { "../ssg/public/emulatorjs/": "emulatorjs/" };
   assert.deepEqual(desktopBundleResources({}), resources);

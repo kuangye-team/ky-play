@@ -3,6 +3,7 @@ import { readFileSync } from "node:fs";
 import { basename, relative, resolve } from "node:path";
 import { transformWithEsbuild, type Plugin } from "vite";
 import { inlineAssetPaths } from "./app-assets";
+import { minifyHtml } from "./minify-html";
 
 export function emulatorAssets(root: string, cdn: string, { deploy = false, desktop = false } = {}) {
   const release = JSON.parse(readFileSync(resolve(root, "licenses/emulatorjs.json"), "utf8"));
@@ -55,7 +56,7 @@ export function emulatorAssets(root: string, cdn: string, { deploy = false, desk
         });
         playerHtml = playerHtml.replace(tag, () => `<script>${code.replace(/<\/script/gi, "<\\/script")}</script>`);
       }
-      await writeFile(resolve(outDir, "player.html"), playerHtml);
+      await writeFile(resolve(outDir, "player.html"), await minifyHtml(playerHtml));
       await writeFile(resolve(outDir, "emulator-release.json"), JSON.stringify({ baseUrl, ...manifest }, null, 2) + "\n");
     },
   };

@@ -7,6 +7,7 @@ import { VitePWA } from "vite-plugin-pwa";
 import { bootLoading } from "./build/boot-loading";
 import { emulatorAssets } from "./build/emulator-assets";
 import { appAssets } from "./build/app-assets";
+import { htmlMinifier } from "./build/minify-html";
 const headers = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "require-corp",
@@ -22,7 +23,7 @@ export default defineConfig(({ mode }) => {
   return {
     cacheDir: fileURLToPath(new URL(`../temp/cache/vite/${mode}`, import.meta.url)),
     // Cached dependencies live outside node_modules and must skip React transforms.
-    plugins: [react({ exclude: [/\/node_modules\//, /\/temp\/cache\//] }), appAssets(), bootLoading(), emulator.plugin, VitePWA({
+    plugins: [react({ exclude: [/\/node_modules\//, /\/temp\/cache\//] }), appAssets(), bootLoading(), emulator.plugin, htmlMinifier(), VitePWA({
       disable: desktop,
       registerType: "prompt",
       injectRegister: "auto",

@@ -212,7 +212,9 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with:
-          ref: ${{ inputs.tag || github.ref }}
+          # Use this workflow's publishing tools when repairing an older tag.
+          # The validate/build jobs still use the requested version's sources.
+          ref: ${{ github.workflow_sha }}
           persist-credentials: false
       - uses: actions/setup-node@v7
         with:
