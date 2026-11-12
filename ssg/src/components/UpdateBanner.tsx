@@ -10,7 +10,7 @@ const busyMessage = "请先保存游戏进度并退出游戏，完成当前操�
 // Read current state again when the worker activates, including after SPA navigation.
 export function beforeAppReload(busy: boolean) {
   return busy || (isDesktop ? location.hash.slice(1) : location.pathname).startsWith("/play/") ||
-    isDesktopExporting() || document.querySelector('[role="dialog"]')
+    isDesktopExporting() || document.querySelector('[role="dialog"]:not(.desktop-update-dialog)')
     ? busyMessage : null;
 }
 

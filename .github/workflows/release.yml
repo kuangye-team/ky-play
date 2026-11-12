@@ -18,6 +18,8 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Set the repository variable to true to promote a release after publishing.
+  RELEASE_AUTO_LATEST: ${{ vars.RELEASE_AUTO_LATEST || 'false' }}
   RELEASE_VERSION: ${{ inputs.tag || github.ref_name }}
   SIGNPATH_ENABLED: ${{ vars.SIGNPATH_ENABLED || 'false' }}
   TAURI_UPDATER_URL: ${{ vars.TAURI_UPDATER_URL || format('https://github.com/{0}/releases/latest/download/latest.json', github.repository) }}
@@ -235,3 +237,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/publish-desktop-release.mjs
+      - name: Mark release as latest
+        if: env.RELEASE_AUTO_LATEST == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: gh release edit "$RELEASE_VERSION" --prerelease=false --latest

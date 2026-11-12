@@ -5,9 +5,12 @@ import { resolve } from "node:path";
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     const calls: string[] = [];
+    let nextDownloadRid = 10;
+    const downloads = new Map<number, (reason: string) => void>();
     Object.assign(window, {
       nativeCalls: calls, nativeUpdateVersion: "1.1.0", nativeCheckError: false, nativeCheckDeferred: false,
       nativeDownloadFailures: 0, nativeCheckFailures: 0,
+      nativeDownloadDeferred: false, nativeInstallDeferred: false,
       __TAURI_INTERNALS__: {
       transformCallback: () => 1,
       invoke: async (command: string, args: any) => {
@@ -24,11 +27,26 @@ test.beforeEach(async ({ page }) => {
           const version = (window as any).nativeUpdateVersion;
           return version ? { rid: 1, version, currentVersion: "1.0.0" } : null;
         }
-        if (command === "plugin:updater|download") {
+        if (command === "prepare_update_download") return nextDownloadRid++;
+        if (command === "download_update") {
           if ((window as any).nativeDownloadError || (window as any).nativeDownloadFailures-- > 0)
             throw "error sending request for url (https://cdn.example.com/update.tar.gz)";
-          return 2;
+          (window as any).nativeProgress = (event: unknown) => args.onEvent.onmessage(event);
+          if ((window as any).nativeDownloadDeferred) {
+            args.onEvent.onmessage({ event: "Started", data: { contentLength: 100 * 1024 ** 2 } });
+            args.onEvent.onmessage({ event: "Progress", data: { chunkLength: 37 * 1024 ** 2 } });
+            try {
+              await new Promise<void>((resolve, reject) => {
+                downloads.set(args.downloadRid, reject);
+                (window as any).nativeCompleteDownload = resolve;
+              });
+            } finally { downloads.delete(args.downloadRid); }
+          }
+          args.onEvent.onmessage({ event: "Finished" });
         }
+        if (command === "plugin:resources|close") downloads.get(args.rid)?.("Update cancelled");
+        if (command === "install_update" && (window as any).nativeInstallDeferred)
+          await new Promise<void>((resolve) => { (window as any).nativeCompleteInstall = resolve; });
         if (command === "plugin:dialog|save") return "/exports/notices.txt";
       },
     } });
@@ -38,7 +56,7 @@ test.beforeEach(async ({ page }) => {
 
 test("About opens the configured download page and installs a deferred update on request", async ({ page }) => {
   await page.goto("/");
-  const banner = page.getByRole("region", { name: "应用更新" });
+  const banner = page.locator(".update-banner");
   await banner.getByRole("button", { name: "稍后", exact: true }).click();
   await page.getByRole("button", { name: "关于拾光", exact: true }).click();
   const about = page.getByRole("dialog", { name: "关于拾光", exact: true });
@@ -60,42 +78,129 @@ test("About opens the configured download page and installs a deferred update on
   await expect.poll(() => page.evaluate(() => (window as any).nativeOpenedUrl))
     .toBe(downloadUrl);
   await expect(about).toBeVisible();
-  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("plugin:updater|download");
+  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("download_update");
   await heading.getByRole("button", { name: "更新并重启", exact: true }).click();
   await expect(about).toHaveCount(0);
   await expect(banner).toBeVisible();
   await expect.poll(() => page.evaluate(() => (window as any).nativeCalls.filter((command: string) =>
-    ["plugin:updater|download", "plugin:updater|install", "plugin:process|restart"].includes(command))),
-  ).toEqual(["plugin:updater|download", "plugin:updater|install", "plugin:process|restart"]);
+    ["download_update", "install_update", "plugin:process|restart"].includes(command))),
+  ).toEqual(["download_update", "install_update", "plugin:process|restart"]);
 });
 
 test("a dropped download connection retries automatically before installing", async ({ page }) => {
   await page.goto("/");
-  const banner = page.getByRole("region", { name: "应用更新" });
+  const banner = page.locator(".update-banner");
   await expect(banner).toBeVisible();
   await page.evaluate(() => { (window as any).nativeDownloadFailures = 1; });
   await banner.getByRole("button", { name: "更新并重启", exact: true }).click();
-  await expect(banner.getByRole("button", { name: "正在更新…", exact: true })).toBeDisabled();
-  await expect(banner.getByRole("button", { name: "稍后", exact: true })).toBeDisabled();
+  const updating = page.getByRole("dialog", { name: "正在更新拾光" });
+  await expect(updating).toContainText("连接中断，正在重试…");
+  await expect(updating.getByRole("button", { name: "取消更新" })).toBeEnabled();
   await page.screenshot({ path: resolve("../temp/screenshot/desktop-update-retrying.png"), animations: "disabled" });
   await expect.poll(() => page.evaluate(() => (window as any).nativeCalls)).toEqual([
-    "plugin:updater|check", "plugin:updater|download", "plugin:updater|download",
-    "plugin:updater|install", "plugin:process|restart",
+    "plugin:updater|check", "prepare_update_download", "download_update", "plugin:resources|close",
+    "prepare_update_download", "download_update", "install_update", "plugin:resources|close", "plugin:process|restart",
   ]);
   await expect(banner).not.toContainText("更新暂时未完成，请重试。");
 });
 
+test("download progress has a modal overlay, cancels the download, and allows a fresh update", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).nativeDownloadDeferred = true; });
+  const banner = page.locator(".update-banner");
+  await banner.getByRole("button", { name: "更新并重启", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "正在更新拾光" });
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "37");
+  await expect(dialog).toContainText("37%");
+  await expect(dialog).toContainText("37.0 MB / 100.0 MB");
+  await expect(page.locator(".desktop-update-overlay")).toBeVisible();
+  await expect(page.locator(".app-shell")).toHaveAttribute("inert", "");
+  await page.mouse.click(10, 10);
+  await expect(dialog).toBeVisible();
+  await page.keyboard.press("Tab");
+  expect(await dialog.evaluate((node) => node.contains(document.activeElement))).toBe(true);
+  await page.screenshot({ path: resolve("../temp/screenshot/desktop-update-progress.png"), animations: "disabled" });
+  await dialog.getByRole("button", { name: "取消更新" }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page.locator(".app-shell")).not.toHaveAttribute("inert");
+  const calls = await page.evaluate(() => (window as any).nativeCalls as string[]);
+  expect(calls).toContain("plugin:resources|close");
+  expect(calls).not.toContain("install_update");
+  expect(calls).not.toContain("plugin:process|restart");
+  await page.getByRole("button", { name: "从设备添加游戏", exact: true }).click();
+  await page.getByRole("dialog").getByRole("button", { name: "关闭", exact: true }).click();
+  await page.evaluate(() => {
+    (window as any).nativeProgress({ event: "Progress", data: { chunkLength: 100 } });
+    (window as any).nativeInstallDeferred = true;
+  });
+  await banner.getByRole("button", { name: "更新并重启", exact: true }).click();
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "37");
+  await page.evaluate(() => { (window as any).nativeCompleteDownload(); });
+  await expect(dialog).toContainText("正在安装更新…");
+  await expect(dialog.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+  await expect(dialog.getByRole("button", { name: "取消更新" })).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await page.screenshot({ path: resolve("../temp/screenshot/desktop-update-installing.png"), animations: "disabled" });
+  await page.evaluate(() => { (window as any).nativeCompleteInstall(); });
+  await expect(dialog).toContainText("正在重启拾光…");
+  await expect.poll(() => page.evaluate(() => (window as any).nativeCalls)).toContain("plugin:process|restart");
+});
+
+test("About updates show unknown download size in English and Escape restores the library", async ({ page }) => {
+  await page.setViewportSize({ width: 800, height: 600 });
+  await page.goto("/");
+  await page.locator(".update-banner").getByRole("button", { name: "稍后", exact: true }).click();
+  await page.getByRole("button", { name: "切换语言", exact: true }).click();
+  await page.getByRole("menuitemradio", { name: /English/ }).click();
+  await page.getByRole("button", { name: "About Oasis", exact: true }).click();
+  await page.evaluate(() => { (window as any).nativeDownloadDeferred = true; });
+  await page.getByRole("dialog", { name: "About Oasis", exact: true }).getByRole("button", { name: "Update and restart" }).click();
+  const dialog = page.getByRole("dialog", { name: "Updating Oasis" });
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    (window as any).nativeProgress({ event: "Started", data: {} });
+    (window as any).nativeProgress({ event: "Progress", data: { chunkLength: 5 * 1024 ** 2 } });
+  });
+  await expect(dialog.getByRole("progressbar")).not.toHaveAttribute("aria-valuenow");
+  await expect(dialog).toContainText("5.0 MB");
+  await expect(dialog).toContainText("Downloading update…");
+  await expect(dialog.getByRole("button", { name: "Cancel update" })).toBeInViewport();
+  expect(await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await page.screenshot({ path: resolve("../temp/screenshot/desktop-update-english-small.png"), animations: "disabled" });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+  await page.getByRole("button", { name: "About Oasis", exact: true }).click();
+  await expect(page.getByRole("dialog", { name: "About Oasis", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("install_update");
+});
+
+test("cancelling during retry backoff stops further downloads", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => { (window as any).nativeDownloadError = true; });
+  await page.locator(".update-banner").getByRole("button", { name: "更新并重启", exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: "正在更新拾光" });
+  await expect(dialog).toContainText("连接中断，正在重试…");
+  await dialog.getByRole("button", { name: "取消更新" }).click();
+  await expect(dialog).toHaveCount(0);
+  const count = await page.evaluate(() => (window as any).nativeCalls.length);
+  await page.clock.install();
+  await page.clock.fastForward(5_000);
+  expect(await page.evaluate(() => (window as any).nativeCalls.length)).toBe(count);
+  await expect(page.locator(".update-banner")).not.toContainText("更新暂时未完成，请重试。");
+});
+
 test("About update failures stay visible and can be retried", async ({ page }) => {
   await page.goto("/");
-  const banner = page.getByRole("region", { name: "应用更新" });
+  const banner = page.locator(".update-banner");
   await banner.getByRole("button", { name: "稍后", exact: true }).click();
   await page.getByRole("button", { name: "关于拾光", exact: true }).click();
   await page.evaluate(() => { (window as any).nativeDownloadError = true; });
   await page.getByRole("dialog").getByRole("button", { name: "更新并重启", exact: true }).click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(banner).toContainText("更新暂时未完成，请重试。");
-  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("plugin:updater|install");
-  expect(await page.evaluate(() => (window as any).nativeCalls.filter((command: string) => command === "plugin:updater|download")))
+  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("install_update");
+  expect(await page.evaluate(() => (window as any).nativeCalls.filter((command: string) => command === "download_update")))
     .toHaveLength(3);
   await page.screenshot({ path: resolve("../temp/screenshot/desktop-update-download-error.png"), animations: "disabled" });
   await page.evaluate(() => { (window as any).nativeDownloadError = false; });
@@ -105,7 +210,7 @@ test("About update failures stay visible and can be retried", async ({ page }) =
 
 test("About keeps checking through automatic retries and then shows the new version", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("region", { name: "应用更新" })).toBeVisible();
+  await expect(page.locator(".update-banner")).toBeVisible();
   await page.getByRole("button", { name: "关于拾光", exact: true }).click();
   const heading = page.getByRole("dialog").locator(".modal-heading");
   await page.evaluate(() => { Object.assign(window, { nativeCheckFailures: 2, nativeUpdateVersion: "1.2.0" }); });
@@ -118,13 +223,13 @@ test("About keeps checking through automatic retries and then shows the new vers
   await expect(heading).not.toContainText("暂时无法检查更新，请稍后重试。");
   const calls = await page.evaluate(() => (window as any).nativeCalls as string[]);
   expect(calls.filter((command) => command === "plugin:updater|check")).toHaveLength(4);
-  expect(calls).not.toContain("plugin:updater|download");
+  expect(calls).not.toContain("download_update");
   await page.screenshot({ path: resolve("../temp/screenshot/desktop-about-check-recovered.png"), animations: "disabled" });
 });
 
 test("About distinguishes up-to-date and failed checks and supports retry", async ({ page }) => {
   await page.goto("/");
-  await expect(page.getByRole("region", { name: "应用更新" })).toBeVisible();
+  await expect(page.locator(".update-banner")).toBeVisible();
   await page.getByRole("button", { name: "关于拾光", exact: true }).click();
   const heading = page.getByRole("dialog").locator(".modal-heading");
   const check = heading.getByRole("button", { name: "检查更新", exact: true });
@@ -168,7 +273,7 @@ test("About version controls fit the minimum desktop window in English", async (
 
 test("desktop updates require consent, block during imports, and restart after install", async ({ page }) => {
   await page.goto("/");
-  const banner = page.getByRole("region", { name: "应用更新" });
+  const banner = page.locator(".update-banner");
   await expect(banner).toBeVisible();
   await expect(page.getByRole("region", { name: "网站更新" })).toHaveCount(0);
   expect(await page.evaluate(async () => (await navigator.serviceWorker.getRegistrations()).length)).toBe(0);
@@ -182,7 +287,8 @@ test("desktop updates require consent, block during imports, and restart after i
   await page.reload();
   await banner.getByRole("button", { name: "更新并重启" }).click();
   await expect.poll(() => page.evaluate(() => (window as any).nativeCalls)).toEqual([
-    "plugin:updater|check", "plugin:updater|download", "plugin:updater|install", "plugin:process|restart",
+    "plugin:updater|check", "prepare_update_download", "download_update", "install_update",
+    "plugin:resources|close", "plugin:process|restart",
   ]);
 });
 
@@ -222,7 +328,7 @@ test("updates wait until gameplay ends without covering the player controls", as
   await page.screenshot({ path: resolve("../temp/screenshot/update-after-playing.png") });
   await banner.getByRole("button", { name: "稍后", exact: true }).click();
   await expect(banner).toHaveCount(0);
-  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("plugin:updater|download");
+  expect(await page.evaluate(() => (window as any).nativeCalls)).not.toContain("download_update");
 });
 
 test("desktop hash routes survive reload and licenses export through the native save dialog", async ({ page }) => {

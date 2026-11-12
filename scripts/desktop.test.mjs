@@ -32,10 +32,10 @@ function publishFixture(t) {
   return { directory, files };
 }
 
-for (const state of ["missing", "draft", "published", "published-retry"]) {
+for (const state of ["missing", "draft", "draft-prerelease", "published", "published-prerelease", "published-retry"]) {
   test(`publish completes a ${state} release and uploads the manifest after its packages`, (t) => {
     const { directory, files } = publishFixture(t);
-    let release = state === "missing" ? null : { isDraft: state === "draft" };
+    let release = state === "missing" ? null : { isDraft: state.startsWith("draft"), isPrerelease: state.includes("prerelease") };
     // Existing mutable releases may contain assets from an interrupted attempt.
     const remote = state === "draft" || state === "published-retry"
       ? { "ky-play-1.2.3-x64-setup.exe": "previous upload" } : {};
@@ -51,6 +51,7 @@ for (const state of ["missing", "draft", "published", "published-retry"]) {
         assert.equal(release, null);
         assert.ok(args.includes("--verify-tag"));
         assert.ok(args.includes("--draft"));
+        assert.ok(args.includes("--latest=false"));
         release = { isDraft: true };
       } else if (action === "upload") {
         assert.ok(release);
@@ -66,7 +67,7 @@ for (const state of ["missing", "draft", "published", "published-retry"]) {
       } else if (action === "edit") {
         assert.deepEqual(remote, files);
         assert.equal(release.isDraft, true);
-        assert.deepEqual(args, ["--draft=false"]);
+        assert.deepEqual(args, ["--draft=false", "--latest=false"]);
         release.isDraft = false;
         edits++;
       } else assert.fail(`Unexpected gh action: ${action}`);
@@ -74,6 +75,7 @@ for (const state of ["missing", "draft", "published", "published-retry"]) {
     assert.equal(publishDesktopRelease(directory, "v1.2.3", runGh), "v1.2.3");
     assert.deepEqual(remote, files);
     assert.equal(release.isDraft, false);
+    assert.equal(!!release.isPrerelease, state.includes("prerelease"));
     assert.equal(edits, state.startsWith("published") ? 0 : 1);
   });
 }

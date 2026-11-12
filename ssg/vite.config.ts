@@ -1,4 +1,4 @@
-import { defineConfig, loadEnv } from "vite";
+import { defineConfig, loadEnv, type UserConfig } from "vite";
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
@@ -8,20 +8,22 @@ import { bootLoading } from "./build/boot-loading";
 import { emulatorAssets } from "./build/emulator-assets";
 import { appAssets } from "./build/app-assets";
 import { htmlMinifier } from "./build/minify-html";
+import { cloudflareEnv } from "./build/cloudflare-env";
 const headers = {
   "Cross-Origin-Opener-Policy": "same-origin",
   "Cross-Origin-Embedder-Policy": "require-corp",
 };
-export default defineConfig(({ mode }) => {
+export function createSsgConfig(mode: string, deploy = false): UserConfig {
   const desktop = mode === "desktop";
-  const deploy = mode === "deploy";
-  const env = loadEnv(deploy ? "production" : mode, import.meta.dirname, "");
+  const cloudflare = deploy ? cloudflareEnv(import.meta.dirname) : undefined;
+  const env = cloudflare?.env ?? loadEnv(mode, import.meta.dirname, "");
   const emulator = emulatorAssets(import.meta.dirname, env.VITE_EMULATOR_CDN_URL || "", { deploy, desktop });
   const licenseRevision = createHash("sha256")
     .update(readFileSync(new URL("./public/licenses/index.json", import.meta.url)))
     .digest("hex").slice(0, 16);
   return {
-    cacheDir: fileURLToPath(new URL(`../temp/cache/vite/${mode}`, import.meta.url)),
+    ...cloudflare?.config,
+    cacheDir: fileURLToPath(new URL(`../temp/cache/vite/${deploy ? "deploy" : mode}`, import.meta.url)),
     // Cached dependencies live outside node_modules and must skip React transforms.
     plugins: [react({ exclude: [/\/node_modules\//, /\/temp\/cache\//] }), appAssets(), bootLoading(), emulator.plugin, htmlMinifier(), VitePWA({
       disable: desktop,
@@ -62,6 +64,7 @@ export default defineConfig(({ mode }) => {
       },
     })],
     define: {
+      ...cloudflare?.config.define,
       "import.meta.env.VITE_DESKTOP": JSON.stringify(desktop),
       "import.meta.env.VITE_EMULATOR_BASE_URL": JSON.stringify(emulator.baseUrl),
       "import.meta.env.VITE_LICENSE_INDEX_URL": JSON.stringify(`/licenses/index.json?v=${licenseRevision}`),
@@ -80,4 +83,6 @@ export default defineConfig(({ mode }) => {
       rollupOptions: { output: { inlineDynamicImports: true } },
     },
   };
-});
+}
+
+export default defineConfig(({ mode }) => createSsgConfig(mode));

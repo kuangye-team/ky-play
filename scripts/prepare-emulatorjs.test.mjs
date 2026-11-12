@@ -106,7 +106,7 @@ test("archive URL from .env is honored and checksum failures preserve existing o
   assert.deepEqual(await readdir(resolve(root, "temp/cache/emulatorjs")), []);
 });
 
-test("initialization keeps the archive URL in root .env and leaves CDN selection empty by default", async (t) => {
+test("initialization keeps environment settings separate and writes Cloudflare variables into vars", async (t) => {
   const { root } = await fixture(t);
   await mkdir(resolve(root, "app"), { recursive: true });
   for (const file of [".env.example", ".env.json.example", "app/.env.example", "ssg/.env.example", "ssg/wrangler.jsonc.example"])
@@ -114,6 +114,7 @@ test("initialization keeps the archive URL in root .env and leaves CDN selection
   initialize(root);
   const config = JSON.parse(await readFile(resolve(root, ".env.json"), "utf8"));
   config.prepare.EMULATORJS_ARCHIVE_URL = "https://mirror.example.com/4.2.3.7z";
+  config.wrangler.ssg.vars = { VITE_WEB_URL: "https://cloudflare.example.com/" };
   for (const mode of ["local", "production", "compose", "desktop"]) {
     const settings = mode === "desktop" ? config.desktop : config[mode].ssg;
     settings.VITE_API_LATEST = `https://updates.example.com/${mode}/latest`;
@@ -127,15 +128,43 @@ test("initialization keeps the archive URL in root .env and leaves CDN selection
     assert.equal(env.VITE_API_LATEST, settings.VITE_API_LATEST);
     assert.equal(env.VITE_WEB_URL, settings.VITE_WEB_URL);
     assert.equal(env.VITE_CLIENT_DOWNLOAD_URL, settings.VITE_CLIENT_DOWNLOAD_URL);
+    assert.equal(env.VITE_EMULATOR_CDN_URL, settings.VITE_EMULATOR_CDN_URL);
     assert.equal(env.CARGO_TARGET_DIR, undefined);
   }
   assert.equal(parseEnv(await readFile(resolve(root, ".env"), "utf8")).VITE_API_LATEST, config.compose.ssg.VITE_API_LATEST);
   assert.equal(parseEnv(await readFile(resolve(root, "app/.env"), "utf8")).CARGO_TARGET_DIR, "temp/cache/cargo");
   for (const file of ["ssg/.env.local", "ssg/.env.production", "ssg/.env.desktop", "ssg/.env.compose", "app/.env"]) {
     const env = await readFile(resolve(root, file), "utf8");
-    assert.match(env, /^VITE_EMULATOR_CDN_URL=$/m);
     assert.doesNotMatch(env, /EMULATORJS_ARCHIVE_URL/);
   }
   const wrangler = JSON.parse(await readFile(resolve(root, "ssg/wrangler.jsonc"), "utf8"));
   assert.equal(wrangler.build.command, "npm run build:deploy");
+  assert.equal(wrangler.vars.VITE_WEB_URL, "https://cloudflare.example.com/");
+  assert.equal(wrangler.vars.VITE_EMULATOR_CDN_URL, "https://cdn.emulatorjs.org/4.2.3");
+  assert.equal(wrangler.vars.VITE_API_LATEST, "https://github.com/kuangye-team/ky-play/releases/latest/download/latest.json");
+
+  config.wrangler.ssg = {
+    name: "custom-worker",
+    assets: { directory: "./custom-dist" },
+    VITE_WEB_URL: "https://flat.example.com/",
+    VITE_EMULATOR_CDN_URL: "",
+    VITE_CUSTOM: "custom-value",
+  };
+  for (const nested of [false, true]) {
+    if (nested) config.wrangler.ssg.vars = { VITE_WEB_URL: "https://nested.example.com/" };
+    await writeFile(resolve(root, ".env.json"), JSON.stringify(config));
+    initialize(root);
+    const actual = JSON.parse(await readFile(resolve(root, "ssg/wrangler.jsonc"), "utf8"));
+    assert.equal(actual.name, "custom-worker");
+    assert.equal(actual.assets.directory, "./custom-dist");
+    assert.equal(actual.assets.not_found_handling, wrangler.assets.not_found_handling);
+    assert.deepEqual(actual.build, wrangler.build);
+    assert.deepEqual(actual.vars, {
+      ...wrangler.vars,
+      VITE_WEB_URL: nested ? "https://nested.example.com/" : "https://flat.example.com/",
+      VITE_EMULATOR_CDN_URL: "",
+      VITE_CUSTOM: "custom-value",
+    });
+    assert.ok(Object.keys(actual).every((key) => !key.startsWith("VITE_")));
+  }
 });

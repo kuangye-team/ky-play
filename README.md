@@ -126,14 +126,12 @@ The default address is <http://localhost:8080>. Image name, tag, and port settin
 
 ### Cloudflare Workers
 
-After source setup, configure `wrangler.ssg` (Worker name and domains) and `production.ssg` (frontend settings) in `.env.json`, then run:
+After source setup, configure `wrangler.ssg` (Worker name and domains) and `wrangler.ssg.vars` (frontend settings) in `.env.json`, then run:
 
 ```sh
 (cd ssg && npx wrangler login)
 npm run deploy
 ```
-
-This deployment loads the emulator from a CDN by default and does not upload bundled emulator resources.
 
 ### Desktop app
 
@@ -150,16 +148,16 @@ The repository includes [desktop release](.github/workflows/release.yml) and [co
 
 ## Configuration
 
-Use [`.env.json.example`](.env.json.example) as the template, edit the root `.env.json`, and run `npm run init` to generate environment files and Wrangler configuration. Generated files are overwritten and should not be maintained directly. Process environment variables take precedence over file settings.
+Use [`.env.json.example`](.env.json.example) as the template, edit the root `.env.json`, and run `npm run init` to generate environment files and Wrangler configuration. Generated files are overwritten and should not be maintained directly. Process environment variables take precedence over file settings, except for Cloudflare frontend deployment builds.
 
 | Section | Purpose |
 | --- | --- |
 | `prepare` | Emulator resource downloads |
 | `local.ssg` | Local website development |
-| `production.ssg` | Production website and Cloudflare deployment builds |
+| `production.ssg` | Regular production website builds (`build:ssg`) |
 | `compose.root` / `compose.ssg` | Docker ports, npm registry, and frontend build arguments |
 | `desktop` | Desktop frontend, updates, signing, and releases |
-| `wrangler.ssg` | Hosting overrides for the [Wrangler template](ssg/wrangler.jsonc.example) |
+| `wrangler.ssg` | Hosting overrides and frontend build parameters under `vars` for the [Wrangler template](ssg/wrangler.jsonc.example) |
 
 ### Common settings
 

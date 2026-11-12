@@ -23,13 +23,13 @@ export function publishDesktopRelease(directory, version, runGh = gh) {
   catch (error) {
     if (!/release not found|HTTP 404/.test(error.stderr?.toString() || "")) throw error;
   }
-  if (!existing) runGh("release", "create", tag, "--verify-tag", "--draft", "--title", `ky-play ${tag}`, "--generate-notes");
+  if (!existing) runGh("release", "create", tag, "--verify-tag", "--draft", "--latest=false", "--title", `ky-play ${tag}`, "--generate-notes");
   // Reuse pre-created releases and replace same-name assets when retrying.
   runGh("release", "upload", tag, ...assets, "--clobber");
   // Published releases are already visible. Upload the manifest separately
   // so the new manifest is only available after its packages are ready.
   runGh("release", "upload", tag, manifest, "--clobber");
-  if (!existing || existing.isDraft) runGh("release", "edit", tag, "--draft=false");
+  if (!existing || existing.isDraft) runGh("release", "edit", tag, "--draft=false", "--latest=false");
   return tag;
 }
 

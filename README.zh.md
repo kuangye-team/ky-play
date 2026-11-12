@@ -126,14 +126,12 @@ docker compose up -d
 
 ### Cloudflare Workers
 
-完成源码环境准备后，配置 `.env.json` 中的 `wrangler.ssg`（Worker 名称与域名）和 `production.ssg`（前端参数），再执行：
+完成源码环境准备后，配置 `.env.json` 中的 `wrangler.ssg`（Worker 名称与域名）和 `wrangler.ssg.vars`（前端参数），再执行：
 
 ```sh
 (cd ssg && npx wrangler login)
 npm run deploy
 ```
-
-此部署方式默认从 CDN 加载模拟器，不上传内置模拟器资源。
 
 ### 桌面客户端
 
@@ -150,16 +148,16 @@ npm run deploy
 
 ## 配置说明
 
-以 [`.env.json.example`](.env.json.example) 为模板，统一修改根目录 `.env.json`，再运行 `npm run init` 生成环境文件与 Wrangler 配置。生成文件会被覆盖，不应直接维护；进程环境变量优先于文件配置。
+以 [`.env.json.example`](.env.json.example) 为模板，统一修改根目录 `.env.json`，再运行 `npm run init` 生成环境文件与 Wrangler 配置。生成文件会被覆盖，不应直接维护；除 Cloudflare 前端部署构建外，进程环境变量优先于文件配置。
 
 | 配置分区 | 作用 |
 | --- | --- |
 | `prepare` | 模拟器资源下载 |
 | `local.ssg` | 网页本地开发 |
-| `production.ssg` | 网页生产构建与 Cloudflare 部署构建 |
+| `production.ssg` | 普通网页生产构建（`build:ssg`） |
 | `compose.root` / `compose.ssg` | Docker 端口、npm 源与前端构建参数 |
 | `desktop` | 桌面前端、更新、签名与发布 |
-| `wrangler.ssg` | 覆盖 [Wrangler 模板](ssg/wrangler.jsonc.example)中的托管配置 |
+| `wrangler.ssg` | 覆盖 [Wrangler 模板](ssg/wrangler.jsonc.example)中的托管配置与 `vars` 前端构建参数 |
 
 ### 常用参数
 

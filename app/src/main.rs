@@ -2,6 +2,7 @@
 
 mod assets;
 mod storage;
+mod updates;
 mod window_theme;
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -65,6 +66,9 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_devtools,
+            updates::prepare_update_download,
+            updates::download_update,
+            updates::install_update,
             window_theme::set_title_bar_color,
             storage::storage_read,
             storage::storage_commit,

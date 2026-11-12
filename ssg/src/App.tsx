@@ -85,6 +85,7 @@ import { beforeAppReload, UpdateBanner } from "./components/UpdateBanner";
 import { flushSync } from "react-dom";
 import { isDesktop } from "./lib/desktop";
 import { applyAppUpdate, getAppUpdate, subscribeAppUpdate } from "./lib/app-updates";
+import { DesktopUpdateDialog } from "./components/DesktopUpdateDialog";
 import { showDesktopUpdate } from "./lib/desktop-updates";
 import { useAutoHideScrollbars } from "./lib/use-auto-hide-scrollbars";
 
@@ -964,6 +965,7 @@ function AppPage({ page }: { page: Page }) {
           />
         </Modal>
       )}
+      {isDesktop && <DesktopUpdateDialog />}
       {help && <AboutModal
         onClose={() => setHelp(false)}
         updateBusy={updateBusy}

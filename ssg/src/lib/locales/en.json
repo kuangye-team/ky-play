@@ -664,5 +664,16 @@
   "请选择当前存储目录之外的空文件夹。": "Choose an empty folder outside the current storage folder.",
   "请选择空文件夹，避免覆盖已有数据。": "Choose an empty folder to avoid overwriting existing data.",
   "请等待文件保存完成后再修改目录。": "Wait for files to finish saving before changing the folder.",
-  "迁移没有完成，原目录未改变。请检查文件夹权限和可用空间后重试。": "The move could not be completed. Your original folder is unchanged. Check folder access and available space, then try again."
+  "迁移没有完成，原目录未改变。请检查文件夹权限和可用空间后重试。": "The move could not be completed. Your original folder is unchanged. Check folder access and available space, then try again.",
+  "正在更新拾光": "Updating Oasis",
+  "正在安装更新…": "Installing update…",
+  "正在重启拾光…": "Restarting Oasis…",
+  "连接中断，正在重试…": "Connection interrupted. Retrying…",
+  "正在取消…": "Cancelling…",
+  "正在下载更新…": "Downloading update…",
+  "更新下载进度": "Update download progress",
+  "更新完成后，拾光将自动重启。": "Oasis will restart when the update is complete.",
+  "取消后可以继续使用，稍后再更新。": "Cancel to keep using Oasis and update later.",
+  "安装即将完成，请稍候。": "Installation is almost complete. Please wait.",
+  "取消更新": "Cancel update"
 }

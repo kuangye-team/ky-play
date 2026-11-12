@@ -88,7 +88,16 @@ export function initialize(directory = root) {
     ));
   }
   // The checked-in JSONC template uses the JSON subset.
-  const wrangler = merge(JSON.parse(read("ssg/wrangler.jsonc.example")), section(config, "wrangler.ssg"));
+  const wranglerOverrides = { ...section(config, "wrangler.ssg") };
+  const vars = {};
+  for (const [key, value] of Object.entries(wranglerOverrides)) {
+    if (!key.startsWith("VITE_")) continue;
+    vars[key] = value;
+    delete wranglerOverrides[key];
+  }
+  // Flat frontend settings belong in vars; explicit vars take precedence.
+  wranglerOverrides.vars = { ...vars, ...section(config, "wrangler.ssg.vars") };
+  const wrangler = merge(JSON.parse(read("ssg/wrangler.jsonc.example")), wranglerOverrides);
   outputs.set("ssg/wrangler.jsonc", JSON.stringify(wrangler, null, 2) + "\n");
   for (const [target, content] of outputs) {
     const path = resolve(directory, target);

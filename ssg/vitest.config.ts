@@ -6,7 +6,7 @@ export default defineConfig({
   cacheDir: fileURLToPath(new URL("../temp/cache/vitest", import.meta.url)),
   test: {
     environment: "node",
-    include: ["src/**/*.test.ts"],
+    include: ["src/**/*.test.ts", "build/**/*.test.ts"],
     setupFiles: ["./tests/setup.ts"],
   },
 });

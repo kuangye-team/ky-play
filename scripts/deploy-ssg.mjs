@@ -7,8 +7,8 @@ const root = fileURLToPath(new URL("..", import.meta.url));
 await mkdir(resolve(root, "temp/artifacts"), { recursive: true });
 const temporary = await mkdtemp(resolve(root, "temp/artifacts/wrangler-"));
 try {
-  // Let Vite read production settings. Wrangler otherwise exports .env.local
-  // into the build process and even replaces explicit empty process values.
+  // Keep Wrangler from exporting .env.local into the build process.
+  // The deployment build reads frontend settings directly from Wrangler vars.
   const envFile = resolve(temporary, ".env");
   await writeFile(envFile, "");
   const result = spawnSync(process.execPath, [
