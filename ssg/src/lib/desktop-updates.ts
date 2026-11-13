@@ -195,6 +195,12 @@ export async function applyAppUpdate(beforeRestart: () => string | null) {
       patch({ updating: false, phase: "idle", progress: null, downloadedBytes: 0, totalBytes: null, error: "" });
     } else {
       console.error("Desktop update failed", error);
+      // Re-select a package on retry if installation failed (for example the
+      // preserved emulator was removed after an app-only package downloaded).
+      if (!state.installed) {
+        await downloaded?.close().catch(() => {});
+        downloaded = null;
+      }
       patch({ updating: false, phase: "idle", error: state.installed ? "更新已安装，请关闭并重新打开拾光。" : "更新暂时未完成，请重试。" });
     }
   } finally {

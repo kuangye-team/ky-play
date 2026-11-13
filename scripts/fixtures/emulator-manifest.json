@@ -1,0 +1,16 @@
+{
+  "schema": 1,
+  "hash": "5866d92361bc8029002317675c5e0ce025e35360b59110f2a011a3d981dbadde",
+  "files": [
+    {
+      "path": "data/cores/nes.data",
+      "size": 4,
+      "sha256": "edc81f7e4ee358fb91e94bd9bd74079c3dcba36f40f2c8a36e7ae0567afecc8f"
+    },
+    {
+      "path": "data/loader.js",
+      "size": 6,
+      "sha256": "d47712cceb4c780603026e6325221c1bcff90679ebc076baa51c71ebe796717c"
+    }
+  ]
+}

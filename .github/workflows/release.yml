@@ -155,7 +155,7 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: signpath-unsigned-windows
-          path: app/dist/*-x64-setup.exe
+          path: app/dist/*-setup.exe
           if-no-files-found: error
           retention-days: 1
       - name: Sign Windows installer with SignPath
@@ -179,10 +179,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: |
           $version = $env:RELEASE_VERSION -replace '^v', ''
-          $installer = "temp/artifacts/signpath-signed/ky-play-$version-x64-setup.exe"
-          $signature = Get-AuthenticodeSignature -LiteralPath $installer
-          if ($signature.Status -ne 'Valid') {
-            throw "SignPath installer signature is not valid: $($signature.Status)"
+          foreach ($name in @("ky-play-$version-x64-setup.exe", "ky-play-$version-x64-app-setup.exe")) {
+            if (Test-Path -LiteralPath "app/dist/$name") {
+              $signature = Get-AuthenticodeSignature -LiteralPath "temp/artifacts/signpath-signed/$name"
+              if ($signature.Status -ne 'Valid') {
+                throw "SignPath installer signature is not valid for ${name}: $($signature.Status)"
+              }
+            }
           }
           node scripts/finalize-windows-signing.mjs temp/artifacts/signpath-signed
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

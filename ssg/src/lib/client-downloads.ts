@@ -29,7 +29,7 @@ function installerUrl(value: unknown, version: string, platform: DesktopPlatform
   if (typeof value !== "string") return;
   try {
     const url = new URL(value);
-    if (url.protocol !== "https:" || url.username || url.password) return;
+    if (!["http:", "https:"].includes(url.protocol) || url.username || url.password) return;
     // Release manifests reference the macOS updater archive; its matching DMG
     // is published alongside it for new installations.
     if (platform === "macos") url.pathname = url.pathname.replace(/\.app\.tar\.gz$/, ".dmg");

@@ -180,10 +180,10 @@ npm run deploy
 
 | 参数 | 用途 |
 | --- | --- |
-| `TAURI_UPDATER_URL` | HTTPS 更新清单地址，默认指向本仓库最新 Release 的 `latest.json` |
+| `TAURI_UPDATER_URL` | HTTP 或 HTTPS 更新清单地址，默认指向本仓库最新 Release 的 `latest.json` |
 | `TAURI_UPDATER_PUBLIC_KEY` | 更新签名公钥，填写 `.pub` 文件完整内容 |
 | `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | 发布所需的私钥内容或绝对路径，以及私钥密码（无密码时留空） |
-| `TAURI_RELEASE_BASE_URL` / `RELEASE_VERSION` | 可选的下载目录与版本，默认使用对应版本的 GitHub Release 目录和根目录 `package.json` 版本 |
+| `TAURI_RELEASE_BASE_URL` / `RELEASE_VERSION` | 可选的 HTTP 或 HTTPS 下载目录与版本，默认使用对应版本的 GitHub Release 目录和根目录 `package.json` 版本 |
 
 生成更新签名密钥：
 
@@ -191,7 +191,7 @@ npm run deploy
 npm run tauri -- signer generate -w /absolute/private/path/ky-play.key
 ```
 
-发布构建需要有效的更新地址、公钥与私钥；本地开发不需要。自行托管更新时，将 `app/dist/` 的产物发布到配置的地址，并为 `latest.json` 启用缓存重新验证。
+发布构建需要有效的更新地址、公钥与私钥；本地开发不需要。本地更新服务支持 HTTP，例如设置 `TAURI_UPDATER_URL=http://host.docker.internal:10888/play/latest.json` 和 `TAURI_RELEASE_BASE_URL=http://host.docker.internal:10888/play`。使用 HTTP 更新清单地址时会自动启用 HTTP 更新支持，更新包仍需通过签名校验。自行托管更新时，将 `app/dist/` 的产物发布到配置的地址，并为 `latest.json` 启用缓存重新验证。
 
 更新签名与操作系统代码签名相互独立。[客户端发布工作流](.github/workflows/release.yml)支持 macOS Developer ID 签名、公证及可选的 Windows SignPath 签名；默认使用 macOS 临时签名和未签名的 Windows 安装包，安装可能受到系统限制。
 

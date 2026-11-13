@@ -43,6 +43,7 @@
     "macOS": { "minimumSystemVersion": "11.0" },
     "windows": {
       "nsis": {
+        "installerHooks": "./windows/installer-hooks.nsh",
         "installMode": "currentUser",
         "languages": ["English", "SimpChinese"],
         "displayLanguageSelector": true

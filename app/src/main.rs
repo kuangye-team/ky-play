@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod assets;
+mod emulator;
 mod storage;
 mod updates;
 mod window_theme;

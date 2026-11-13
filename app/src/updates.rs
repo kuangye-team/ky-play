@@ -1,6 +1,7 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::{
     future::Future,
+    path::PathBuf,
     sync::{Arc, Mutex},
 };
 use tauri::{ipc::Channel, Manager, Resource, ResourceId, Runtime, Webview};
@@ -11,7 +12,67 @@ use tokio_util::sync::CancellationToken;
 struct UpdateDownload {
     update: Arc<Update>,
     cancel: CancellationToken,
-    bytes: Mutex<Option<Vec<u8>>>,
+    package: Mutex<Option<DownloadedPackage>>,
+}
+
+struct DownloadedPackage {
+    update: Update,
+    emulator_cache: Option<PathBuf>,
+    bytes: Vec<u8>,
+}
+
+#[derive(Deserialize)]
+struct AppUpdate {
+    emulator_hash: String,
+    url: tauri::Url,
+    signature: String,
+}
+
+fn platform_key() -> String {
+    let os = if cfg!(target_os = "macos") {
+        "darwin"
+    } else {
+        "windows"
+    };
+    format!("{os}-{}", std::env::consts::ARCH)
+}
+
+fn app_update(raw: &serde_json::Value, hash: &str, platform: &str) -> Option<AppUpdate> {
+    let updates = raw.get("app_updates")?;
+    if updates.get("schema")?.as_u64()? != 1 {
+        return None;
+    }
+    let entry: AppUpdate =
+        serde_json::from_value(updates.get("platforms")?.get(platform)?.clone()).ok()?;
+    (entry.emulator_hash == hash
+        && !entry.signature.is_empty()
+        && matches!(entry.url.scheme(), "http" | "https")
+        && entry.url.username().is_empty()
+        && entry.url.password().is_none()
+        && entry.url.fragment().is_none())
+    .then_some(entry)
+}
+
+fn select_package(update: &Update, bundled: PathBuf, data: PathBuf) -> (Update, Option<PathBuf>) {
+    let select = || {
+        let manifest = crate::emulator::bundled_manifest()?;
+        let entry = app_update(&update.raw_json, &manifest.hash, &platform_key())?;
+        let mut selected = update.clone();
+        selected.download_url = entry.url;
+        // Only choose the small package once a complete verified copy exists
+        // outside the installation. Disk/copy/checksum failures use the full one.
+        let cache = manifest.preserve(&bundled, &data).ok()?;
+        selected.signature = entry.signature;
+        Some((selected, Some(cache)))
+    };
+    select().unwrap_or_else(|| (update.clone(), None))
+}
+
+fn small_update_paths(
+    bundled: Result<PathBuf, tauri::Error>,
+    data: Result<PathBuf, tauri::Error>,
+) -> Option<(PathBuf, PathBuf)> {
+    Some((bundled.ok()?.join("emulatorjs"), data.ok()?))
 }
 
 impl Resource for UpdateDownload {
@@ -57,7 +118,7 @@ pub fn prepare_update_download<R: Runtime>(
     Ok(resources.add(UpdateDownload {
         update,
         cancel: CancellationToken::new(),
-        bytes: Mutex::new(None),
+        package: Mutex::new(None),
     }))
 }
 
@@ -71,11 +132,25 @@ pub async fn download_update<R: Runtime>(
         .resources_table()
         .get::<UpdateDownload>(download_rid)
         .map_err(|e| e.to_string())?;
+    let original = download.update.clone();
+    let paths = small_update_paths(
+        webview.path().resource_dir(),
+        webview.path().app_local_data_dir(),
+    );
+    let (update, emulator_cache) = if let Some((bundled, data)) = paths {
+        cancellable(&download.cancel, async {
+            tauri::async_runtime::spawn_blocking(move || select_package(&original, bundled, data))
+                .await
+                .map_err(|e| e.to_string())
+        })
+        .await?
+    } else {
+        ((*original).clone(), None)
+    };
     let mut started = false;
     let bytes = cancellable(&download.cancel, async {
         // Keep the plugin's signature verification and platform handling.
-        download
-            .update
+        update
             .download(
                 |chunk_length, content_length| {
                     if !started {
@@ -91,7 +166,11 @@ pub async fn download_update<R: Runtime>(
     })
     .await?;
     // Finished means the package has also passed signature verification.
-    *download.bytes.lock().map_err(|e| e.to_string())? = Some(bytes);
+    *download.package.lock().map_err(|e| e.to_string())? = Some(DownloadedPackage {
+        update,
+        emulator_cache,
+        bytes,
+    });
     let _ = on_event.send(DownloadEvent::Finished);
     Ok(())
 }
@@ -110,9 +189,20 @@ pub async fn install_update<R: Runtime>(
         if download.cancel.is_cancelled() {
             return Err("Update cancelled".into());
         }
-        let bytes = download.bytes.lock().map_err(|e| e.to_string())?;
-        let bytes = bytes.as_ref().ok_or("Update has not been downloaded")?;
-        download.update.install(bytes).map_err(|e| e.to_string())
+        let package = download.package.lock().map_err(|e| e.to_string())?;
+        let package = package.as_ref().ok_or("Update has not been downloaded")?;
+        // A download can wait while a game is running. Recheck resources before
+        // replacing the application, in case they were deleted in the meantime.
+        if let Some(root) = &package.emulator_cache {
+            crate::emulator::bundled_manifest()
+                .ok_or("Missing emulator manifest")?
+                .verify(root)
+                .map_err(|e| e.to_string())?;
+        }
+        package
+            .update
+            .install(&package.bytes)
+            .map_err(|e| e.to_string())
     })
     .await
     .map_err(|e| e.to_string())?
@@ -121,6 +211,70 @@ pub async fn install_update<R: Runtime>(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn selects_only_matching_resources_for_the_current_platform() {
+        let hash = "a".repeat(64);
+        for platform in ["windows-x86_64", "darwin-aarch64", "darwin-x86_64"] {
+            let raw = serde_json::json!({ "app_updates": { "schema": 1, "platforms": {
+                platform: { "emulator_hash": hash, "url": "https://example.com/app-update", "signature": "signed" }
+            }}});
+            assert!(app_update(&raw, &hash, platform).is_some());
+            assert!(app_update(&raw, &"b".repeat(64), platform).is_none());
+            assert!(app_update(&raw, &hash, "unsupported").is_none());
+            for url in [
+                "http://host.docker.internal:10888/play/app-update",
+                "http://localhost:10888/play/app-update",
+            ] {
+                let mut local = raw.clone();
+                local["app_updates"]["platforms"][platform]["url"] = url.into();
+                assert_eq!(app_update(&local, &hash, platform).unwrap().url.as_str(), url);
+            }
+            for url in [
+                "file:///update",
+                "ftp://example.com/update",
+                "http://user:pass@example.com/update",
+                "http://example.com/update#part",
+                "https://user:pass@example.com/update",
+                "not a URL",
+                "https://example.com/update#part",
+            ] {
+                let mut invalid = raw.clone();
+                invalid["app_updates"]["platforms"][platform]["url"] = url.into();
+                assert!(app_update(&invalid, &hash, platform).is_none());
+            }
+            let mut invalid = raw.clone();
+            invalid["app_updates"]["schema"] = 2.into();
+            assert!(app_update(&invalid, &hash, platform).is_none());
+            invalid = raw.clone();
+            invalid["app_updates"]["platforms"][platform]["signature"] = "".into();
+            assert!(app_update(&invalid, &hash, platform).is_none());
+        }
+        assert!(app_update(
+            &serde_json::json!({ "platforms": {} }),
+            &hash,
+            "windows-x86_64"
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn missing_small_update_paths_fall_back_to_the_full_package() {
+        let bundled = PathBuf::from("/tmp/ky-play/resources");
+        let data = PathBuf::from("/tmp/ky-play/data");
+        assert_eq!(
+            small_update_paths(Ok(bundled.clone()), Ok(data.clone())),
+            Some((bundled.join("emulatorjs"), data))
+        );
+        assert_eq!(
+            small_update_paths(Err(tauri::Error::UnknownPath), Ok(PathBuf::from("/tmp/data"))),
+            None
+        );
+        assert_eq!(
+            small_update_paths(Ok(PathBuf::from("/tmp/resources")), Err(tauri::Error::UnknownPath)),
+            None
+        );
+    }
 
     #[tokio::test]
     async fn cancellation_drops_in_flight_work() {

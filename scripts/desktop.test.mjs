@@ -2,12 +2,13 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createHash, verify } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, symlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { basename, resolve } from "node:path";
 import { collectArtifacts, writeManifest } from "./desktop-release.mjs";
 import { desktopBundleResources, releaseVersion, root, signPathEnabled, updaterConfig } from "./desktop-config.mjs";
 import { finalizeWindowsSigning } from "./finalize-windows-signing.mjs";
 import { publishDesktopRelease } from "./publish-desktop-release.mjs";
+import { emulatorManifest } from "./desktop-emulator.mjs";
 
 const signature = Buffer.from("untrusted comment: test signature\nfixture").toString("base64");
 function fixture(t) {
@@ -124,13 +125,25 @@ test("desktop bundles one shared emulator directory unless a CDN is selected", (
   assert.deepEqual(desktopBundleResources({ VITE_EMULATOR_CDN_URL: "  " }), resources);
   assert.deepEqual(desktopBundleResources({ VITE_EMULATOR_CDN_URL: "https://example.com/4.2.3" }), []);
 });
-test("release configuration requires signing and an HTTPS updater URL", () => {
+test("release configuration requires signing and accepts HTTP or HTTPS updater URLs", () => {
   assert.equal(releaseVersion("v1.2.3"), "1.2.3");
   for (const value of ["main", "v1.2", "1.2.3-beta", "01.2.3", "1.0.0/../../x"]) assert.throws(() => releaseVersion(value));
   assert.throws(() => updaterConfig({}, true), /require/);
   const env = { TAURI_UPDATER_URL: "https://updates.example.com/latest.json", TAURI_UPDATER_PUBLIC_KEY: "public", TAURI_SIGNING_PRIVATE_KEY: "private" };
   assert.equal(updaterConfig(env, true).bundle.createUpdaterArtifacts, true);
-  assert.throws(() => updaterConfig({ ...env, TAURI_UPDATER_URL: "http://example.com/latest.json" }, true), /HTTPS/);
+  for (const release of [false, true]) {
+    for (const endpoint of [env.TAURI_UPDATER_URL, "http://host.docker.internal:10888/play/latest.json", "HTTP://localhost:10888/latest.json"]) {
+      const config = updaterConfig({ ...env, TAURI_UPDATER_URL: `  ${endpoint}  ` }, release);
+      assert.deepEqual(config.plugins.updater.endpoints, [endpoint]);
+      assert.equal(config.plugins.updater.pubkey, "public");
+      assert.equal(config.plugins.updater.dangerousInsecureTransportProtocol, new URL(endpoint).protocol === "http:");
+      assert.equal(config.bundle.createUpdaterArtifacts, release);
+    }
+    for (const endpoint of ["not a URL", "file:///latest.json", "ftp://example.com/latest.json",
+      "http://user:pass@example.com/latest.json", "https://example.com/latest.json#part"]) {
+      assert.throws(() => updaterConfig({ ...env, TAURI_UPDATER_URL: endpoint }, release), /HTTP or HTTPS/);
+    }
+  }
   assert.deepEqual(updaterConfig({}, false).plugins.updater.endpoints, []);
 });
 test("SignPath is opt-in and rejects incomplete configuration when enabled", () => {
@@ -144,7 +157,7 @@ test("SignPath is opt-in and rejects incomplete configuration when enabled", () 
   for (const key of Object.keys(env).filter((key) => key !== "SIGNPATH_ENABLED"))
     assert.throws(() => signPathEnabled({ ...env, [key]: " " }), new RegExp(key));
 });
-test("SignPath installer receives a matching updater signature and manifest", (t) => {
+test("both SignPath installers receive matching updater signatures and manifest entries", (t) => {
   const dir = fixture(t);
   const signed = resolve(dir, "signed"); const out = resolve(dir, "dist");
   mkdirSync(signed); mkdirSync(out);
@@ -159,6 +172,10 @@ test("SignPath installer receives a matching updater signature and manifest", (t
   writeFileSync(resolve(out, `${name}.sig`), signature);
   writeFileSync(resolve(signed, name), after);
   writeFileSync(resolve(signed, `${name}.sig`), signature);
+  const appName = "ky-play-1.2.3-x64-app-setup.exe";
+  writeFileSync(resolve(out, appName), "old app update");
+  writeFileSync(resolve(signed, appName), "signed app update");
+  writeFileSync(resolve(out, "ky-play-1.2.3-x64-emulator.json"), JSON.stringify({ schema: 1, version: "1.2.3", hash: "a".repeat(64) }));
   finalizeWindowsSigning(signed, out, "v1.2.3", { ...process.env,
     TAURI_SIGNING_PRIVATE_KEY: keyPath, TAURI_SIGNING_PRIVATE_KEY_PASSWORD: "",
     TAURI_RELEASE_BASE_URL: "https://updates.example.com/v1.2.3" });
@@ -167,6 +184,10 @@ test("SignPath installer receives a matching updater signature and manifest", (t
   const manifest = JSON.parse(readFileSync(resolve(out, "latest.json")));
   assert.equal(manifest.platforms["windows-x86_64"].signature, newSignature);
   assert.equal(manifest.platforms["windows-x86_64"].url, `https://updates.example.com/v1.2.3/${name}`);
+  assert.equal(readFileSync(resolve(out, appName), "utf8"), "signed app update");
+  assert.equal(manifest.app_updates.platforms["windows-x86_64"].signature, readFileSync(resolve(out, `${appName}.sig`), "utf8").trim());
+  assert.equal(manifest.app_updates.platforms["windows-x86_64"].url, `https://updates.example.com/v1.2.3/${appName}`);
+  assert.notEqual(manifest.app_updates.platforms["windows-x86_64"].signature, newSignature);
   // Verify the real Minisign signature independently with Node's Ed25519 API.
   const publicLines = Buffer.from(readFileSync(`${keyPath}.pub`, "utf8").trim(), "base64").toString().split("\n");
   const publicKey = Buffer.from(publicLines[1], "base64").subarray(10);
@@ -240,6 +261,8 @@ test("collect installers with stable names and merge universal macOS + Windows m
   assert.equal(manifest.platforms["windows-x86_64"].signature, signature);
   assert.deepEqual(JSON.parse(readFileSync(resolve(out, "latest.json"))), manifest);
   assert.match(writeManifest(out, "1.2.3", { TAURI_RELEASE_BASE_URL: "https://cdn.example.com/apps/" }).platforms["windows-x86_64"].url, /^https:\/\/cdn.example.com\/apps\/ky-play/);
+  assert.equal(writeManifest(out, "1.2.3", { TAURI_RELEASE_BASE_URL: "http://host.docker.internal:10888/play/" }).platforms["windows-x86_64"].url,
+    "http://host.docker.internal:10888/play/ky-play-1.2.3-x64-setup.exe");
   writeFileSync(resolve(out, "ky-play-1.2.3-x64-setup.exe.sig"), "");
   assert.throws(() => writeManifest(out, "1.2.3", {}), /Invalid updater signature/);
 });
@@ -258,4 +281,61 @@ test("missing current app artifacts fail before copying instead of using old bun
   assert.throws(() => collectArtifacts(bundle, out, "universal-apple-darwin", "1.2.3"),
     /Missing release artifact: .*Ky Play\.app\.tar\.gz\.sig$/);
   assert.equal(existsSync(out), false);
+});
+
+test("emulator hash uses content and paths, not timestamps or directory order", async (t) => {
+  const dir = fixture(t);
+  mkdirSync(resolve(dir, "data/cores"), { recursive: true });
+  writeFileSync(resolve(dir, "data/loader.js"), "loader");
+  writeFileSync(resolve(dir, "data/cores/nes.data"), Buffer.from([0, 255, 1, 128]));
+  const expected = JSON.parse(readFileSync(resolve(root, "scripts/fixtures/emulator-manifest.json")));
+  assert.deepEqual(await emulatorManifest(dir), expected);
+  utimesSync(resolve(dir, "data/loader.js"), new Date(0), new Date(0));
+  assert.deepEqual(await emulatorManifest(dir), expected);
+  writeFileSync(resolve(dir, "data/loader.js"), "change");
+  assert.notEqual((await emulatorManifest(dir)).hash, expected.hash);
+  if (process.platform !== "win32") {
+    symlinkSync(resolve(dir, "data/loader.js"), resolve(dir, "link.js"));
+    await assert.rejects(emulatorManifest(dir), /Unsupported emulator entry/);
+  }
+});
+
+test("split manifest keeps full downloads for old clients and app-only packages for each platform", (t) => {
+  const { directory } = publishFixture(t);
+  const hash = "a".repeat(64);
+  for (const [arch, suffix] of [["universal", ".app.tar.gz"], ["x64", "-setup.exe"]]) {
+    writeFileSync(resolve(directory, `ky-play-1.2.3-${arch}-app${suffix}`), "small update");
+    writeFileSync(resolve(directory, `ky-play-1.2.3-${arch}-app${suffix}.sig`), signature);
+    writeFileSync(resolve(directory, `ky-play-1.2.3-${arch}-emulator.json`), JSON.stringify({ schema: 1, version: "1.2.3", hash }));
+  }
+  const manifest = writeManifest(directory, "1.2.3", { TAURI_RELEASE_BASE_URL: "http://host.docker.internal:10888/play" });
+  assert.equal(manifest.app_updates.schema, 1);
+  for (const key of ["darwin-aarch64", "darwin-x86_64", "windows-x86_64"]) {
+    assert.equal(manifest.app_updates.platforms[key].emulator_hash, hash);
+    assert.ok(manifest.app_updates.platforms[key].url.startsWith("http://host.docker.internal:10888/play/"));
+    assert.match(manifest.app_updates.platforms[key].url, /-app[.-]/);
+    assert.doesNotMatch(manifest.platforms[key].url, /-app[.-]/);
+  }
+  writeFileSync(resolve(directory, "ky-play-1.2.3-x64-emulator.json"), JSON.stringify({ schema: 1, version: "1.2.2", hash }));
+  assert.throws(() => writeManifest(directory, "1.2.3", {}), /Invalid emulator metadata/);
+  writeFileSync(resolve(directory, "ky-play-1.2.3-x64-emulator.json"), JSON.stringify({ schema: 1, version: "1.2.3", hash }));
+  rmSync(resolve(directory, "ky-play-1.2.3-x64-app-setup.exe"));
+  assert.throws(() => writeManifest(directory, "1.2.3", {}), /Missing or empty update artifact/);
+});
+
+test("collects app-only bundles separately without replacing full installers", (t) => {
+  const { directory } = publishFixture(t);
+  const bundle = resolve(fixture(t), "bundle");
+  mkdirSync(resolve(bundle, "macos"), { recursive: true });
+  mkdirSync(resolve(bundle, "nsis"));
+  writeFileSync(resolve(bundle, "macos/Ky Play.app.tar.gz"), "small mac");
+  writeFileSync(resolve(bundle, "macos/Ky Play.app.tar.gz.sig"), signature);
+  writeFileSync(resolve(bundle, "nsis/Ky Play_1.2.3_x64-setup.exe"), "small win");
+  writeFileSync(resolve(bundle, "nsis/Ky Play_1.2.3_x64-setup.exe.sig"), signature);
+  collectArtifacts(bundle, directory, "universal-apple-darwin", "1.2.3", "app");
+  collectArtifacts(bundle, directory, "x86_64-pc-windows-msvc", "1.2.3", "app");
+  assert.equal(readFileSync(resolve(directory, "ky-play-1.2.3-universal.app.tar.gz"), "utf8"), "mac update");
+  assert.equal(readFileSync(resolve(directory, "ky-play-1.2.3-x64-setup.exe"), "utf8"), "windows installer");
+  assert.equal(readFileSync(resolve(directory, "ky-play-1.2.3-universal-app.app.tar.gz"), "utf8"), "small mac");
+  assert.equal(readFileSync(resolve(directory, "ky-play-1.2.3-x64-app-setup.exe"), "utf8"), "small win");
 });

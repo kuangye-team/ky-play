@@ -207,7 +207,9 @@ describe("desktop updates", () => {
     update.install.mockRejectedValueOnce(new Error("signature"));
     await app.applyAppUpdate(() => null);
     expect(mocks.relaunch).not.toHaveBeenCalled();
+    expect(update.closeDownload).toHaveBeenCalledOnce();
     await app.applyAppUpdate(() => null);
+    expect(update.download).toHaveBeenCalledTimes(3);
     expect(mocks.relaunch).toHaveBeenCalledOnce();
   });
   it("recovers from native connection failures without another click", async () => {

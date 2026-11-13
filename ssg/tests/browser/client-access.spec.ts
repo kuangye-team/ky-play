@@ -11,6 +11,23 @@ const release = {
   },
 };
 
+test("HTTP 更新清单中的本地客户端下载地址可正常显示", async ({ page }) => {
+  const base = "http://host.docker.internal:10888/play";
+  await page.route(releaseURL, (route) => route.fulfill({ json: {
+    ...release,
+    platforms: Object.fromEntries(Object.entries(release.platforms).map(([platform, entry]) => [
+      platform, { ...entry, url: entry.url.replace("https://example.com", base) },
+    ])),
+  } }));
+  await page.goto("/");
+  await page.getByRole("button", { name: "打开客户端", exact: true }).hover();
+  const panel = page.getByRole("dialog", { name: "下载拾光客户端" });
+  await expect(panel.getByText("v1.2.3")).toBeVisible();
+  await expect(panel.getByRole("link", { name: /Windows 10/ })).toHaveAttribute("href", `${base}/ky-play-1.2.3-x64-setup.exe`);
+  await expect(panel.getByRole("link", { name: /macOS/ })).toHaveAttribute("href", `${base}/ky-play-1.2.3-universal.dmg`);
+  await page.screenshot({ path: "../temp/screenshot/client-access-http.png", fullPage: true });
+});
+
 test("客户端入口按系统推荐下载，悬浮区可进入，键盘与关闭行为正常", async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, "platform", { value: "Win32" });

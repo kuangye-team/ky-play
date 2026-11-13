@@ -44,10 +44,17 @@ fn read_resource(root: &Path, relative: &str) -> Option<Vec<u8>> {
 impl<R: Runtime> Assets<R> for DesktopAssets<R> {
     fn setup(&self, app: &App<R>) {
         self.embedded.setup(app);
-        if let Ok(root) = app
+        let bundled = app
             .path()
             .resource_dir()
-            .and_then(|dir| dir.join("emulatorjs").canonicalize().map_err(Into::into))
+            .ok()
+            .map(|dir| dir.join("emulatorjs"));
+        let cached = crate::emulator::bundled_manifest()
+            .and_then(|manifest| manifest.cache_root(&app.path().app_local_data_dir().ok()?));
+        if let Some(root) = bundled
+            .into_iter()
+            .chain(cached)
+            .find_map(|dir| dir.is_dir().then(|| dir.canonicalize().ok()).flatten())
         {
             let _ = self.emulator_root.set(root);
         }

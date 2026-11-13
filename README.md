@@ -180,10 +180,10 @@ Configure these in the `desktop` section or the process environment:
 
 | Setting | Purpose |
 | --- | --- |
-| `TAURI_UPDATER_URL` | HTTPS update-manifest URL; defaults to `latest.json` in this repository's latest Release |
+| `TAURI_UPDATER_URL` | HTTP or HTTPS update-manifest URL; defaults to `latest.json` in this repository's latest Release |
 | `TAURI_UPDATER_PUBLIC_KEY` | Update-signing public key; use the complete `.pub` file contents |
 | `TAURI_SIGNING_PRIVATE_KEY` / `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Release private key contents or absolute path, and its password (empty for an unencrypted key) |
-| `TAURI_RELEASE_BASE_URL` / `RELEASE_VERSION` | Optional download directory and version; defaults to the version's GitHub Release directory and root `package.json` version |
+| `TAURI_RELEASE_BASE_URL` / `RELEASE_VERSION` | Optional HTTP or HTTPS download directory and version; defaults to the version's GitHub Release directory and root `package.json` version |
 
 Generate an update-signing key pair:
 
@@ -191,7 +191,7 @@ Generate an update-signing key pair:
 npm run tauri -- signer generate -w /absolute/private/path/ky-play.key
 ```
 
-Release builds require a valid update URL, public key, and private key; local development does not. For self-hosted updates, publish `app/dist/` at the configured URLs and enable cache revalidation for `latest.json`.
+Release builds require a valid update URL, public key, and private key; local development does not. Local update hosting supports HTTP, for example `TAURI_UPDATER_URL=http://host.docker.internal:10888/play/latest.json` with `TAURI_RELEASE_BASE_URL=http://host.docker.internal:10888/play`. HTTP updater support is enabled automatically for HTTP endpoints; package signatures are still verified. For self-hosted updates, publish `app/dist/` at the configured URLs and enable cache revalidation for `latest.json`.
 
 Update signing is separate from operating-system code signing. The [desktop release workflow](.github/workflows/release.yml) supports macOS Developer ID signing and notarization, and optional Windows SignPath signing. It defaults to an ad-hoc macOS signature and unsigned Windows installers, which may face installation restrictions.
 

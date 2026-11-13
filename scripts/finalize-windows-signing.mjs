@@ -10,25 +10,35 @@ import { writeManifest } from "./desktop-release.mjs";
 export function finalizeWindowsSigning(signedDirectory, output, version, env) {
   version = releaseVersion(version);
   const name = `ky-play-${version}-x64-setup.exe`;
-  const installer = resolve(signedDirectory, name);
-  if (!statSync(installer, { throwIfNoEntry: false })?.isFile() || !statSync(installer).size)
-    throw new Error(`Missing or empty SignPath installer: ${installer}`);
+  const appName = `ky-play-${version}-x64-app-setup.exe`;
+  const metadataName = `ky-play-${version}-x64-emulator.json`;
+  const split = existsSync(resolve(output, appName)) || existsSync(resolve(output, metadataName));
+  const names = split ? [name, appName] : [name];
+  for (const name of names) {
+    const installer = resolve(signedDirectory, name);
+    if (!statSync(installer, { throwIfNoEntry: false })?.isFile() || !statSync(installer).size)
+      throw new Error(`Missing or empty SignPath installer: ${installer}`);
+  }
   if (!env.TAURI_SIGNING_PRIVATE_KEY?.trim()) throw new Error("TAURI_SIGNING_PRIVATE_KEY is required");
   const key = env.TAURI_SIGNING_PRIVATE_KEY;
-  rmSync(`${installer}.sig`, { force: true });
-  const result = spawnSync(process.execPath, [resolve(root, "node_modules/@tauri-apps/cli/tauri.js"),
-    "signer", "sign", "--app-version", version, installer], {
-    cwd: root, stdio: "inherit", env: {
-      ...env,
-      TAURI_SIGNING_PRIVATE_KEY: existsSync(key) ? readFileSync(key, "utf8") : key,
-      TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "",
-    },
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error("Failed to sign the SignPath installer for Tauri updates");
+  for (const name of names) {
+    const installer = resolve(signedDirectory, name);
+    rmSync(`${installer}.sig`, { force: true });
+    const result = spawnSync(process.execPath, [resolve(root, "node_modules/@tauri-apps/cli/tauri.js"),
+      "signer", "sign", "--app-version", version, installer], {
+      cwd: root, stdio: "inherit", env: {
+        ...env,
+        TAURI_SIGNING_PRIVATE_KEY: existsSync(key) ? readFileSync(key, "utf8") : key,
+        TAURI_SIGNING_PRIVATE_KEY_PASSWORD: env.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || "",
+      },
+    });
+    if (result.error) throw result.error;
+    if (result.status !== 0) throw new Error("Failed to sign the SignPath installer for Tauri updates");
+  }
+  if (split) copyFileSync(resolve(output, metadataName), resolve(signedDirectory, metadataName));
   // Validate the new signature and create matching metadata before promotion.
   writeManifest(signedDirectory, version, env, false);
-  for (const file of [name, `${name}.sig`, "latest.json"])
+  for (const file of [...names.flatMap((name) => [name, `${name}.sig`]), "latest.json"])
     copyFileSync(resolve(signedDirectory, file), resolve(output, file));
 }
 

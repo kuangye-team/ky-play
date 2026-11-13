@@ -47,10 +47,27 @@ it("reads latest.json and resolves the macOS installer alongside its updater arc
   } }).downloads.windows).toBe("https://downloads.example.com/ky-play-1.2.3-x64-setup.exe");
 });
 
+it("accepts HTTP installers from local manifests and release assets", () => {
+  const base = "http://host.docker.internal:10888/play";
+  const downloads = {
+    macos: `${base}/ky-play-1.2.3-universal.dmg`,
+    windows: `${base}/ky-play-1.2.3-x64-setup.exe`,
+  };
+  expect(parseClientRelease({ ...manifest, platforms: {
+    "darwin-aarch64": { url: `${base}/ky-play-1.2.3-universal.app.tar.gz` },
+    "windows-x86_64": { url: downloads.windows },
+  } }).downloads).toEqual(downloads);
+  expect(parseClientRelease({ version: "1.2.3", downloads }).downloads).toEqual(downloads);
+  expect(parseClientRelease({ ...release, assets: release.assets.map((asset) => ({
+    ...asset, browser_download_url: `${base}/${asset.name}`,
+  })) }).downloads).toEqual(downloads);
+});
+
 it.each([
   { ...manifest, version: "1.2.4" }, { ...manifest, version: "" }, { ...manifest, platforms: {} },
   ...["javascript:alert(1)", "https://user:password@example.com/ky-play-1.2.3-universal.app.tar.gz",
-    "http://example.com/ky-play-1.2.3-universal.app.tar.gz", "https://example.com/wrong.app.tar.gz"].map((url) => ({
+    "ftp://example.com/ky-play-1.2.3-universal.app.tar.gz", "http://user:password@example.com/ky-play-1.2.3-universal.app.tar.gz",
+    "https://example.com/wrong.app.tar.gz"].map((url) => ({
     ...manifest, platforms: { "darwin-aarch64": { url } },
   })),
 ])("rejects incomplete manifests and unsafe installer URLs: %j", (value) => {
@@ -67,14 +84,15 @@ it("selects the published installers, excluding signatures and update archives",
 it.each([null, {}, { ...release, draft: true }, { ...release, prerelease: true },
   { ...release, tag_name: "v1.2.4" },
   ...["javascript:alert(1)", "https://user:password@example.com/ky-play-1.2.3-universal.dmg",
-    "http://example.com/ky-play-1.2.3-universal.dmg", "https://example.com/wrong.app.tar.gz"].map((url) => ({
+    "ftp://example.com/ky-play-1.2.3-universal.dmg", "http://user:password@example.com/ky-play-1.2.3-universal.dmg",
+    "https://example.com/wrong.app.tar.gz"].map((url) => ({
     ...release, assets: [{ name: "ky-play-1.2.3-universal.dmg", browser_download_url: url }],
   })),
 ])("rejects unavailable installers and unsafe release URLs: %j", (value) => {
   expect(() => parseClientRelease(value)).toThrow("Invalid client release");
 });
 
-it.each(["", "  https://updates.example.com/latest  "])("shares successful requests and retries using the configured endpoint: %j", async (endpoint) => {
+it.each(["", "  https://updates.example.com/latest  ", "http://host.docker.internal:10888/play/latest.json"])("shares successful requests and retries using the configured endpoint: %j", async (endpoint) => {
   vi.stubEnv("VITE_API_LATEST", endpoint);
   const fetchMock = vi.fn().mockResolvedValueOnce({ ok: false }).mockResolvedValue({ ok: true, json: async () => manifest });
   vi.stubGlobal("fetch", fetchMock);
