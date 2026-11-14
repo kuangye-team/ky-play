@@ -228,7 +228,10 @@ mod tests {
             ] {
                 let mut local = raw.clone();
                 local["app_updates"]["platforms"][platform]["url"] = url.into();
-                assert_eq!(app_update(&local, &hash, platform).unwrap().url.as_str(), url);
+                assert_eq!(
+                    app_update(&local, &hash, platform).unwrap().url.as_str(),
+                    url
+                );
             }
             for url in [
                 "file:///update",
@@ -267,11 +270,17 @@ mod tests {
             Some((bundled.join("emulatorjs"), data))
         );
         assert_eq!(
-            small_update_paths(Err(tauri::Error::UnknownPath), Ok(PathBuf::from("/tmp/data"))),
+            small_update_paths(
+                Err(tauri::Error::UnknownPath),
+                Ok(PathBuf::from("/tmp/data"))
+            ),
             None
         );
         assert_eq!(
-            small_update_paths(Ok(PathBuf::from("/tmp/resources")), Err(tauri::Error::UnknownPath)),
+            small_update_paths(
+                Ok(PathBuf::from("/tmp/resources")),
+                Err(tauri::Error::UnknownPath)
+            ),
             None
         );
     }
